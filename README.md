@@ -46,11 +46,14 @@ drawBody: radial gradient lit from the sun's direction + a darkened terminator o
 depth: mouse parallax shifts bg/sun/rings/planets by different amounts (par + PX_* constants, eased so it lags). a comet trail evaporates behind the cursor (#comet overlay). the odd shooting star drifts through, and rarer still a ufo: same spawn/move/draw shape as the meteor but ~10x slower, because unlike a shooting star you're meant to catch it (see secret below). drawn last in render so it sits above the planets, matching the hit priority handleClick gives it.
 mouse: live hit-test on pointermove. touch: hold-to-hover (300ms), tap = click.
 deep links: the URL hash mirrors state (#ai-thoughts, #ai-thoughts/sycophancy-mapping, #about) so back/forward + sharing a specific thing work.
-respects prefers-reduced-motion: freezes orbits, kills parallax/comet/shooting-stars/ufo, snaps the camera instead of easing. note the ufo being gated here means reduced-motion users can only reach the sandbox by keyboard.
+respects prefers-reduced-motion: freezes orbits, kills parallax/comet/shooting-stars/ufo, snaps the camera instead of easing. note the ufo being gated here means reduced-motion users can only reach the game by keyboard.
 hidden #a11y text layer (built from SITE) + og/meta tags so search engines & screen readers get the content the canvas otherwise hides. a deploy-time Action (prerender.js) also bakes that outline into static index.html, so non-JS crawlers get it too — you still just edit content.js.
 
-secret: konami code (↑ ↑ ↓ ↓ ← → ← → b a) or just type "comet" → a little gravity sandbox. pull back & release to fling a comet that orbits the sun and slingshots the planets. esc to leave.
-third way in, and the only one that works without a keyboard: tap the ufo. it's a coin flip: half the time you get the sandbox, half the time it just bolts. one tap per sighting (pending stays truthy as 'gone' so you can't chase it down and re-roll), and a new one shows up 150-350s after the last leaves.
+secret: three ways in. konami code (↑ ↑ ↓ ↓ ← → ← → b a), type "comet", or tap the ufo. the ufo is the only one that works without a keyboard, and it's a coin flip: half the time you get in, half the time it bolts. one tap per sighting (pending stays truthy as 'gone' so you can't chase it down and re-roll). first ufo 20-45s in, then one every 60-100s.
+
+the game: four routes, each harder than the last (LEVELS: more looping, smaller rings, less of the path predicted for you). a tracer draws the intended path, then the rings fade in behind it. pull back from the fixed anchor and a second trail of small circles predicts where this shot actually goes, so you match one to the other. clear the rings in order. hit a planet or the sun, or cross the boundary heading outward, and the route resets. clear all four and the sun flares, the orbit rings pulse outward in sequence, and it drops you back in the orrery. f toggles free shoot: no route, fling as many as you like, f again to pick the route back up.
+
+two things hold that together and will silently break it if changed. planets freeze while gameOn: the line is a solved launch through a static field, so a moving field makes it unfollowable. and the generator, the prediction dots and the live run all step at the same fixed SIM_H, because with variable frame dt a perfect launch diverges from the drawn line near the sun, where forces are huge. buildCourse doesn't draw a path, it replays a launch that survived, so the line is always followable by construction.
 
 Fonts and vibes
 
