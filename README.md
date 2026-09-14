@@ -19,6 +19,7 @@ prerender.js  deploy-time only: bakes that outline into index.html so non-JS cra
 favicon.svg   lil ringed planet
 preview.png   social share image
 photos/       hover-peek + portrait images
+Honikman-Talia-CV-2026.pdf   content.js links this by exact filename, so renaming it 404s the cv link
 
 content.js is a plain SITE object, three sections:
 
