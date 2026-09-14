@@ -14,6 +14,8 @@ index.html    shell: canvas elements, panel markup, meta/og tags, font links
 styles.css    all visual styling
 content.js    all words/numbers. edit this, not orrery.js
 orrery.js     engine: orbital math, rendering, hit-testing, interaction
+a11y.js       builds the hidden text outline. shared by orrery.js at runtime and prerender.js at build so the two can't drift
+prerender.js  deploy-time only: bakes that outline into index.html so non-JS crawlers get it
 favicon.svg   lil ringed planet
 preview.png   social share image
 photos/       hover-peek + portrait images
