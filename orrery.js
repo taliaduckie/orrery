@@ -1257,6 +1257,27 @@
     setHover(null);
   }
 
+  // panels are real dialogs: named, focus moves in, focus comes back out.
+  // deliberately NOT aria-modal, because the canvas behind stays live to a mouse
+  // and claiming modality the app doesn't enforce would be a lie to AT.
+  let lastFocus = null;
+  function panelOpened(el){
+    if(el.getAttribute('aria-hidden') === 'false') return;   // already open, don't re-steal focus
+    lastFocus = document.activeElement;
+    el.setAttribute('aria-hidden','false');
+    try { el.focus({preventScroll:true}); } catch(_){ el.focus(); }
+  }
+  function panelClosed(el){
+    if(el.getAttribute('aria-hidden') === 'true') return;
+    const had = el.contains(document.activeElement) || document.activeElement === el;
+    el.setAttribute('aria-hidden','true');
+    if(had){
+      if(lastFocus && document.contains(lastFocus)) { try { lastFocus.focus({preventScroll:true}); } catch(_){} }
+      else if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    }
+    lastFocus = null;
+  }
+
   function openMoon(m, parent){
     openMoonObj = m;
     mDomain.textContent = parent.name;
@@ -1280,8 +1301,9 @@
     top = Math.max(16, Math.min(H-ch-16, top));
     moonPanel.style.left = left+'px';
     moonPanel.style.top = top+'px';
+    panelOpened(moonPanel);
   }
-  function closeMoon(){ openMoonObj = null; moonPanel.classList.remove('show'); hidePeek(); }
+  function closeMoon(){ openMoonObj = null; moonPanel.classList.remove('show'); hidePeek(); panelClosed(moonPanel); }
   moonPanel.querySelector('.m-close').addEventListener('click', ()=>writeHash(focused?focused.slug:''));
   // a moon can carry `links: [{label, href}, ...]` for several, or a single `href`
   function moonLinks(m){
@@ -1341,8 +1363,8 @@
   mBody.addEventListener('mouseout',  e=>{ if(e.target.closest('.m-photo')) hidePeek(); });
   mBody.addEventListener('click',     e=>{ const t = e.target.closest('.m-photo'); if(!t) return; peekEl.classList.contains('show') ? hidePeek() : showPeek(t); }); // tap toggles
 
-  function openAbout(){ closeMoon(); aboutPanel.classList.add('show'); hintEl.style.opacity='0'; setHover(null); }
-  function closeAbout(){ aboutPanel.classList.remove('show'); if(mode==='system') hintEl.style.opacity='0.7'; }
+  function openAbout(){ closeMoon(); aboutPanel.classList.add('show'); hintEl.style.opacity='0'; setHover(null); panelOpened(aboutPanel); }
+  function closeAbout(){ aboutPanel.classList.remove('show'); if(mode==='system') hintEl.style.opacity='0.7'; panelClosed(aboutPanel); }
   aboutPanel.querySelector('.a-close').addEventListener('click', ()=>writeHash(''));
 
   function buildAbout(){

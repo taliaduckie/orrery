@@ -45,18 +45,18 @@
 
   <div id="tip"><div class="t-name"></div><div class="t-desc"></div></div>
 
-  <div id="moonPanel">
+  <div id="moonPanel" role="dialog" aria-labelledby="moonTitle" tabindex="-1" aria-hidden="true">
     <button class="m-close" aria-label="close">&times;</button>
     <div class="m-domain"></div>
-    <div class="m-title"></div>
+    <div class="m-title" id="moonTitle"></div>
     <div class="m-body"></div>
     <div class="m-links"></div>
   </div>
 
-  <div id="aboutPanel">
+  <div id="aboutPanel" role="dialog" aria-labelledby="aboutName" tabindex="-1" aria-hidden="true">
     <button class="a-close" aria-label="close">&times;</button>
     <div class="a-kicker"></div>
-    <h1 class="a-name"></h1>
+    <h1 class="a-name" id="aboutName"></h1>
     <div class="a-body"></div>
     <div class="a-links"></div>
   </div>
