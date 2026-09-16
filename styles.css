@@ -23,6 +23,15 @@ body{
   width:1px;height:1px;padding:0;margin:-1px;
   overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
 }
+/* keyboard focus. :focus-visible so a mouse click doesn't leave a ring behind.
+   amber on the dark ground is 8.2:1, well past the 3:1 WCAG wants for an indicator */
+a:focus-visible,
+button:focus-visible{
+  outline:2px solid #d9985a;
+  outline-offset:3px;
+  border-radius:2px;
+}
+
 .noscript{max-width:640px;margin:48px auto;padding:0 24px;color:#e9e4dc;font-family:Georgia,serif;line-height:1.6;}
 .noscript a{color:#d9985a;}
 #comet{position:fixed;inset:0;display:block;pointer-events:none;z-index:12;}
