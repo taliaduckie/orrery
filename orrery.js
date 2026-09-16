@@ -1328,13 +1328,15 @@
   }
   function showPeek(t){
     peekImg.src = t.dataset.img;
+    peekImg.alt = t.textContent;          // the phrase that triggered it
+    peekEl.setAttribute('aria-hidden','false');
     const r = t.getBoundingClientRect();
     peekEl.style.left = Math.max(135, Math.min(W-135, r.left + r.width/2)) + 'px';
     if(r.top > 240){ peekEl.style.top = (r.top - 10)+'px'; peekEl.style.transform = 'translate(-50%,-100%)'; }
     else            { peekEl.style.top = (r.bottom + 10)+'px'; peekEl.style.transform = 'translate(-50%,0)'; }
     peekEl.classList.add('show');
   }
-  function hidePeek(){ peekEl.classList.remove('show'); }
+  function hidePeek(){ peekEl.classList.remove('show'); peekEl.setAttribute('aria-hidden','true'); }
   mBody.addEventListener('mouseover', e=>{ const t = e.target.closest('.m-photo'); if(t) showPeek(t); });
   mBody.addEventListener('mouseout',  e=>{ if(e.target.closest('.m-photo')) hidePeek(); });
   mBody.addEventListener('click',     e=>{ const t = e.target.closest('.m-photo'); if(!t) return; peekEl.classList.contains('show') ? hidePeek() : showPeek(t); }); // tap toggles

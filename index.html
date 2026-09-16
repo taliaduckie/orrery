@@ -26,8 +26,9 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <canvas id="stage"></canvas>
-  <canvas id="comet"></canvas>
+  <!-- aria-hidden: #a11y below carries this content as real text -->
+  <canvas id="stage" aria-hidden="true"></canvas>
+  <canvas id="comet" aria-hidden="true"></canvas>
 
   <!-- text layer for search engines & screen readers (the orrery is canvas-only); built from content.js -->
   <main id="a11y" class="sr-only"></main>
@@ -60,7 +61,7 @@
     <div class="a-links"></div>
   </div>
 
-  <div id="photoPeek"><img alt="" /></div>
+  <div id="photoPeek" aria-hidden="true"><img alt="" /></div>
 
   <nav id="social"></nav>
 
