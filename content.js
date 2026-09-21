@@ -34,7 +34,7 @@ const SITE = {
     }
   },
 
-  // links in the persistent corner bar 
+  // links in the persistent corner bar  
   social: [
     { label: 'LinkedIn', href: 'https://www.linkedin.com/in/talia-b-honikman/' },
     { label: 'Substack', href: 'https://taliahonikman.substack.com/' },
