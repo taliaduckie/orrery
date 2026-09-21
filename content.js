@@ -131,8 +131,8 @@ const SITE = {
       name: 'violin',
       desc: 'classically trained has-been',
       color: '#b56e84', r: 22, a: 625, e: 0.08, period: 268, rot: 0.8,
-      // ring!!!! inner/outer are multiples of the planet radius, tilt squashes
-      // the ellipse (0 = edge-on, 1 = face-on), angle tips the ring in radians
+      // ring!!!! inner/outer are multiples of the planet radius,and tilt squashes
+      // the ellipse (0 = edge-on, 1 = face-on). angle tips the ring in radians.
       ring: { inner: 1.72, outer: 2.12, tilt: 0.34, angle: -0.55, color: '#c2ad88' },
       moons: [
         { name: 'related essays', dr: 50, period: 18, e: 0.07, rot: 0.6,
