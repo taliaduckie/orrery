@@ -138,7 +138,8 @@ const SITE = {
         { name: 'related essays', dr: 50, period: 18, e: 0.07, rot: 0.6,
           links: [
             { label: 'the road not chosen', href: 'https://taliahonikman.substack.com/p/the-road-not-chosen' },
-            { label: 'violin logic',        href: 'https://taliahonikman.substack.com/p/violin-logic' }
+            { label: 'violin logic',        href: 'https://taliahonikman.substack.com/p/violin-logic' },
+            { label: 'i was/am a violinist', href: 'https://taliahonikman.substack.com/p/i-wasam-a-violinist' }
           ],
           body: '' },
         { name: 'recordings',     dr: 78, period: 28, e: 0.11, rot: 3.0, href: '#', body: 'Incoming...' }
