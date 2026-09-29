@@ -64,7 +64,7 @@ const SITE = {
       ring: { inner: 1.62, outer: 1.9, tilt: 0.28, angle: 0.5, color: '#a8b196', alpha: 0.36 },
       moons: [
         { name: 'fine, i’ll be aligned',                 dr: 52,  period: 19, e: 0.05, rot: 1.0, href: 'https://taliahonikman.substack.com/p/fine-ill-be-aligned', body: 'What “alignment faking” borrows from someone saying “fine” when they’re not.' },
-        { name: 'the marshmallow benchmark',             dr: 78,  period: 28, e: 0.14, rot: 3.0, href: 'https://taliahonikman.substack.com/p/behold-the-marshmallow-benchmark', body: 'Can frontier models count a pile of marshmallows? What the failures say about reasoning and honesty.' },
+        { name: 'the marshmallow benchmark',             dr: 78,  period: 28, e: 0.14, rot: 3.0, href: 'https://taliahonikman.substack.com/p/behold-the-marshmallow-benchmark', body: 'About a month ago I started writing an outline for a post about AI counting marshmallows.' },
         { name: 'sycophancy mapping',                    dr: 100, period: 37, e: 0.09, rot: 5.1, href: '#', body: 'In progress: sycophancy mapping in language models. How a discourse classifier’s blind spots (moments that it can’t tell genuine agreement from people-pleasing) reveal something about the mechanisms of AI-related adulation.' },
         { name: 'evidence-inverting confabulation',      dr: 124, period: 46, e: 0.11, rot: 4.2, href: 'https://taliahonikman.substack.com/p/no-youre-hallucinating', body: '' }
       ]
