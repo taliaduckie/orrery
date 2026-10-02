@@ -120,7 +120,10 @@ const SITE = {
       color: '#7a3f57', r: 24, a: 175, e: 0.09, period: 74, rot: 0.35,
       moons: [
         { name: 'essays',       dr: 50, period: 17, e: 0.07, rot: 0.9,
-          links: [{ label: 'the hedge', href: 'https://taliahonikman.substack.com/' }],
+          links: [
+            { label: 'the hedge', href: 'https://taliahonikman.substack.com/' },
+            { label: 'i flew on a 747 for the first time', href: 'https://taliahonikman.substack.com/p/i-flew-on-a-747-for-the-first-time' }
+          ],
           body: 'Longer pieces.' },
         { name: 'reading list', dr: 76, period: 27, e: 0.11, rot: 3.2, href: '#',
           body: 'Recently loved: *Seveneves* (Stephenson), *Now Is Not the Time to Panic* (Wilson), *On Not Knowing* (Ogden), *Consolations II* (Whyte).\nAll-time: *Musicophilia* (Sacks), *Assholes: A Theory* (James), *Round Ireland with a Fridge* (Hawks), *Superintelligence* (Bostrom), *Symphony for the City of the Dead* (Anderson).' },
