@@ -56,7 +56,7 @@ secret: three ways in. konami code (↑ ↑ ↓ ↓ ← → ← → b a), type "
 
 the game: four routes, each harder than the last (LEVELS: more looping, smaller rings, less of the path predicted for you). a tracer draws the intended path, then the rings fade in behind it. pull back from the fixed anchor and a second trail of small circles predicts where this shot actually goes, so you match one to the other. clear the rings in order. hit a planet or the sun, or cross the boundary heading outward, and the route resets. clear all four and the sun flares, the orbit rings pulse outward in sequence, and it drops you back in the orrery. f toggles free shoot: no route, fling as many as you like, f again to pick the route back up.
 
-two things hold that together and will silently break it if changed. planets freeze while gameOn: the line is a solved launch through a static field, so a moving field makes it unfollowable. and the generator, the prediction dots and the live run all step at the same fixed SIM_H, because with variable frame dt a perfect launch diverges from the drawn line near the sun, where forces are huge. buildCourse doesn't draw a path, it replays a launch that survived, so the line is always followable by construction.
+currently planets freeze while gameOn: the line is a solved launch through a static field, so a moving field makes it unfollowable. also the generator, the prediction dots and the live run all step at the same fixed SIM_H, because with variable frame dt a perfect launch diverges from the drawn line near the sun, where forces are huge. buildCourse doesn't draw a path, it replays a launch that survived, so the line is always followable by construction.
 
 Fonts and vibes
 
