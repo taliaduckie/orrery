@@ -1,5 +1,7 @@
 /* orrery.js — the engine, as an ES module (so it can be split into engine/ modules
    step by step). Reads the SITE object from content.js; content should be changed there. */
+import { hexRgb, rgba, lighten, darken, mix, rng, slugify, reduced } from './engine/utils.js';
+
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 const tipEl = document.getElementById('tip');
@@ -16,13 +18,6 @@ const hintEl = document.getElementById('hint');
 const hintDefault = hintEl.innerHTML;
 
 const SHADOW = {r:34, g:28, b:25};
-function hexRgb(h){ h=h.replace('#',''); return {r:parseInt(h.slice(0,2),16), g:parseInt(h.slice(2,4),16), b:parseInt(h.slice(4,6),16)}; }
-function rgba(c,a){ return 'rgba('+(c.r|0)+','+(c.g|0)+','+(c.b|0)+','+(a===undefined?1:a)+')'; }
-function lighten(c,f){ return {r:c.r+(255-c.r)*f, g:c.g+(255-c.g)*f, b:c.b+(255-c.b)*f}; }
-function darken(c,f){ return {r:c.r*(1-f), g:c.g*(1-f), b:c.b*(1-f)}; }
-function mix(a,b,t){ return {r:a.r+(b.r-a.r)*t, g:a.g+(b.g-a.g)*t, b:a.b+(b.b-a.b)*t}; }
-function rng(seed){ let s=(seed*2654435761)%2147483647; if(s<=0) s+=2147483646; return ()=>{ s=(s*16807)%2147483647; return (s-1)/2147483646; }; } // bebb
-function slugify(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
 
 const SUN = {
   label: SITE.sun.label,
@@ -51,7 +46,6 @@ const PLANETS = SITE.planets.map((p,idx)=>({
   }))
 }));
 
-const reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const ORBIT_SPEED = reduced ? 0 : 1;   // 1 = original, lower = calmer; 0 = frozen for reduced motion
 PLANETS.forEach(p=>{
   p.b = p.a * Math.sqrt(1 - p.e*p.e);
