@@ -13,7 +13,19 @@ Files
 index.html    shell: canvas elements, panel markup, meta/og tags, font links
 styles.css    all visual styling
 content.js    all words/numbers. edit this, not orrery.js
-orrery.js     engine: orbital math, rendering, hit-testing, interaction
+orrery.js     engine entry point: the frame loop (update → render), resize, boot. imports engine/
+engine/       the engine, one concern per module:
+  utils.js        colour helpers, seeded rng, slugify, the reduced-motion flag
+  astro.js        astronomical data: sun + planets normalized from SITE, constellation catalogue + star names
+  state.js        shared mutable state: screen size, camera (view/target), mode/focus/hover, the comet game's state
+  dom.js          the elements index.html provides, looked up once
+  sky.js          baked star background + constellation placement (ringed around the orrery)
+  simulation.js   orbital motion, camera easing, gravity physics for the comet game (field, course generator, prediction)
+  ui.js           tooltip + hover, moon/about cards, photo peeks, hint, social bar, a11y outline, hash router
+  game.js         the comet game's state machine: enter/exit, levels, launch, win/fail, hint line
+  effects.js      depth + ambience: parallax, cursor comet trail, shooting stars, the ufo
+  input.js        pointer/touch/keyboard, hit-testing, click ladder, secret entrances
+  render.js       draws a frame (drawBody is the planet look)
 a11y.js       builds the hidden text outline. shared by orrery.js at runtime and prerender.js at build so the two can't drift
 prerender.js  deploy-time only: bakes that outline into index.html so non-JS crawlers get it
 favicon.svg   lil ringed planet
@@ -37,11 +49,11 @@ New planet, retitled moon, new color: all content.js, never orrery.js.
 
 Running locally
 
-python3 -m http.server 8000, open localhost:8000. a server is required: the engine is an ES module and browsers refuse to load those over file://. deploys straight to GitHub Pages from main, no build step.
+python3 -m http.server 8000, open localhost:8000. a server is required now: the engine is ES modules and browsers refuse to load those over file://. deploys straight to GitHub Pages from main, no build step.
 
 how it works!
 
-One requestAnimationFrame loop: update (positions) then render (redraw).
+One requestAnimationFrame loop in orrery.js: update (orbits → game → camera → effects → constellation dwell) then render. State that more than one module touches lives on plain objects in engine/state.js (`state`, `view`, `target`, `mouse`, `par`, `game`) because ES module bindings are read-only across files; everything else is module-local. Dependencies only point down the list above (utils → astro → state → dom → sky → simulation → ui → game → effects → input → render), no cycles.
 Camera is an eased target; view chases target for zoom on planet click. Two modes: system (all planets) / planet (one planet's moons). Focusing locks camera to that planet, fades in moons.
 Hover freezes that orbit (isPlanetPaused / isMoonPaused, checked in update). labels only show on hover/focus; everything else lives in the tooltip.
 Background: dark-blue sky, ~320 baked stars + 25 real constellation asterisms placed once (random, non-overlapping, ringed *around* the orrery so they never sit under a planet). dwell on a constellation to reveal its star names.
@@ -56,7 +68,7 @@ secret: three ways in. konami code (↑ ↑ ↓ ↓ ← → ← → b a), type "
 
 the game: four routes, each harder than the last (LEVELS: more looping, smaller rings, less of the path predicted for you). a tracer draws the intended path, then the rings fade in behind it. pull back from the fixed anchor and a second trail of small circles predicts where this shot actually goes, so you match one to the other. clear the rings in order. hit a planet or the sun, or cross the boundary heading outward, and the route resets. clear all four and the sun flares, the orbit rings pulse outward in sequence, and it drops you back in the orrery. f toggles free shoot: no route, fling as many as you like, f again to pick the route back up.
 
-currently planets freeze while gameOn: the line is a solved launch through a static field, so a moving field makes it unfollowable. also the generator, the prediction dots and the live run all step at the same fixed SIM_H, because with variable frame dt a perfect launch diverges from the drawn line near the sun, where forces are huge. buildCourse doesn't draw a path, it replays a launch that survived, so the line is always followable by construction.
+currently planets freeze while game.on: the line is a solved launch through a static field, so a moving field makes it unfollowable. also the generator, the prediction dots and the live run all step at the same fixed SIM_H, because with variable frame dt a perfect launch diverges from the drawn line near the sun, where forces are huge. buildCourse doesn't draw a path, it replays a launch that survived, so the line is always followable by construction.
 
 Fonts and vibes
 
