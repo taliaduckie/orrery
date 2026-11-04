@@ -3,11 +3,12 @@
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
 import { CONTENT, SUN, PLANETS } from './engine/astro.js';
 import { state, view, target, mouse, par, game, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
-import { canvas, ctx, cometCanvas, cctx, moonPanel, aboutPanel } from './engine/dom.js';
+import { canvas, ctx, cometCanvas, moonPanel, aboutPanel } from './engine/dom.js';
 import { bgCanvas, constItems, buildBackground, buildConstellations } from './engine/sky.js';
 import { updateOrbits, updateCamera, LAUNCH, predictPath } from './engine/simulation.js';
 import { setHover, hideTip, showConstTip, positionConstTip, positionTip, writeHash, applyHashState, setHint, resetHint, setHintOpacity, buildAbout, buildSocial, buildA11y, installUI } from './engine/ui.js';
 import { tickGame, lookAtCourse, enterGame, exitGame, toggleFree, launchBody } from './engine/game.js';
+import { tickEffects, pointerMoved, hitUfo, ufoHover, tapUfo, drawMeteor, drawUfo, drawComet } from './engine/effects.js';
 
 const SHADOW = {r:34, g:28, b:25};
 
@@ -28,18 +29,6 @@ function resize(){
 window.addEventListener('resize', resize);
 
 let lastT = performance.now();
-
-let pmx=0, pmy=0, pmtx=0, pmty=0;                  // smoothed + target, [-1,1]
-const PX_BG=2, PX_SUN=3, PX_RING=4, PX_PLANET=6;  // max shift per depth layer
-const trail = [];             // {x,y,life}
-
-let meteor = null, nextMeteorIn = 12 + Math.random()*22;   // ambient shooting stars
-
-// slower than meteor bc u gotta catch it (gotta catch em all?
-// tap it 50/50 sandbox or ZOOMM AWAY
-let ufo = null, nextUfoIn = 20 + Math.random()*25;
-const UFO_TIP = { name:'ufo', desc:'tap it' };   // shown on hover/hold so it reads as tappable
-const UFO_HIT = 30;   // fat tap radius, it's tiny and moving
 
 // hover-a-constellation-long-enough → list its stars
 const CONST_HOVER_R = 70, CONST_DWELL = 0.6;   // px radius, seconds
@@ -188,52 +177,7 @@ function update(dt){
   tickGame(dt);
   updateCamera(dt);
 
-  if(!mouse.active){ pmtx=0; pmty=0; }
-  pmx += (pmtx-pmx)*0.05; pmy += (pmty-pmy)*0.05;
-  par.bg.x=pmx*PX_BG;         par.bg.y=pmy*PX_BG;
-  par.sun.x=pmx*PX_SUN;       par.sun.y=pmy*PX_SUN;
-  par.ring.x=pmx*PX_RING;     par.ring.y=pmy*PX_RING;
-  par.planet.x=pmx*PX_PLANET; par.planet.y=pmy*PX_PLANET;
-
-  for(let i=trail.length-1;i>=0;i--){ trail[i].life *= 0.9; if(trail[i].life < 0.03) trail.splice(i,1); }
-
-  if(!reduced){
-    if(meteor){
-      meteor.x += meteor.vx*dt; meteor.y += meteor.vy*dt; meteor.life -= dt;
-      if(meteor.life<=0 || meteor.y>state.H+120 || meteor.x<-120 || meteor.x>state.W+120) meteor = null;
-    } else {
-      nextMeteorIn -= dt;
-      if(nextMeteorIn<=0){ spawnMeteor(); nextMeteorIn = 90 + Math.random()*120; }
-    }
-
-    if(ufo){
-      ufo.t += dt;
-      ufo.x += ufo.vx*dt;
-      if(ufo.beam > 0){
-        ufo.beam -= dt*1.6;
-        if(ufo.beam <= 0){                       // beam done, pay out the coin flip
-          const what = ufo.pending;
-          if(what === 'game'){ ufo = null; enterGame(); }
-          else { ufo.pending = 'gone'; ufo.vx *= 7; }   // spooked, gone
-          // stays truthy so hitUfo won't let you chase it down and re-roll the coin
-        }
-      }
-      if(ufo && (ufo.x < -90 || ufo.x > state.W+90)) ufo = null;
-    } else if(!game.on){                          // no new arrivals mid-sandbox
-      nextUfoIn -= dt;
-      if(nextUfoIn<=0){ spawnUfo(); nextUfoIn = 60 + Math.random()*40; }
-    }
-    if(!ufo && state.hoverObj && state.hoverObj.type==='ufo') setHover(null);
-
-    // nobody finds the sandbox on their own, so nudge lingerers toward the ufo
-    if(state.nudgeT > 0){
-      state.nudgeT -= dt;
-      if(state.nudgeT <= 0) resetHint();
-    } else if(!game.on && !state.focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
-      state.idleT += dt;
-      if(state.idleT >= 40){ state.idleT = -60; state.nudgeT = 6; setHint('psst &nbsp;&middot;&nbsp; catch the ufo'); }
-    }
-  }
+  tickEffects(dt);
 
   // dwell on a constellation (when nothing else is hovered) to reveal its stars
   if(!game.on && mouse.active && !state.hoverObj && !nearInteractive()){
@@ -262,7 +206,7 @@ function render(){
   ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
 
   drawConstellations();
-  if(meteor) drawMeteor();
+  drawMeteor();
 
   let prog = 0;
   if(state.focused){
@@ -307,7 +251,7 @@ function render(){
 
   ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
   drawLabels(prog, otherAlpha);
-  if(ufo) drawUfo();   // last: it's a screen-space overlay, and handleClick gives it hit priority
+  drawUfo();   // last: it's a screen-space overlay, and handleClick gives it hit priority
 
   drawComet();
 }
@@ -335,93 +279,6 @@ function drawConstellations(){
       ctx.beginPath(); ctx.arc(p.bx+ox, p.by+oy, 1.2, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(214,222,238,'+p.op+')'; ctx.fill();
     }
-  }
-}
-
-function drawComet(){
-  cctx.setTransform(state.DPR,0,0,state.DPR,0,0);
-  cctx.clearRect(0,0,state.W,state.H);
-  for(const t of trail){
-    const rad = Math.max(0.1, 7*t.life);
-    const g = cctx.createRadialGradient(t.x,t.y,0, t.x,t.y, rad);
-    g.addColorStop(0, 'rgba(255,250,236,'+(0.5*t.life)+')');
-    g.addColorStop(1, 'rgba(255,250,236,0)');
-    cctx.fillStyle = g;
-    cctx.beginPath(); cctx.arc(t.x,t.y,rad,0,Math.PI*2); cctx.fill();
-  }
-}
-
-function spawnMeteor(){
-  const dir = Math.random()<0.5 ? 1 : -1;
-  const ang = Math.PI*0.18 + Math.random()*Math.PI*0.16;   // below horizontal
-  const speed = (state.W+state.H)*0.32;
-  meteor = {
-    x: state.W*(0.15+Math.random()*0.7), y: state.H*(Math.random()*0.3),
-    vx: dir*Math.cos(ang)*speed, vy: Math.sin(ang)*speed,
-    life: 1, len: 80+Math.random()*70
-  };
-}
-function drawMeteor(){
-  const sp = Math.hypot(meteor.vx,meteor.vy)||1;
-  const ux = meteor.vx/sp, uy = meteor.vy/sp;
-  const hx = meteor.x, hy = meteor.y, tx = hx-ux*meteor.len, ty = hy-uy*meteor.len;
-  const a = Math.max(0, Math.min(1, meteor.life))*0.7;
-  const g = ctx.createLinearGradient(hx,hy,tx,ty);
-  g.addColorStop(0, 'rgba(255,250,236,'+a+')');
-  g.addColorStop(1, 'rgba(255,250,236,0)');
-  ctx.strokeStyle = g; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(tx,ty); ctx.stroke();
-  ctx.lineCap = 'butt';
-}
-
-function spawnUfo(){
-  const dir = Math.random()<0.5 ? 1 : -1;
-  ufo = {
-    x: dir>0 ? -50 : state.W+50,
-    y: state.H*(0.12 + Math.random()*0.45),
-    vx: dir*(state.W+state.H)*0.035,   // slow enough to actually be tapped
-    t: 0,
-    beam: 0,               // counts down while the tractor beam is lit
-    pending: null          // what to do once the beam finishes: 'game' | 'flee'
-  };
-}
-
-function hitUfo(sx,sy){
-  return !!ufo && !ufo.pending && Math.hypot(sx-ufo.x, sy-ufo.y) <= UFO_HIT;
-}
-
-function tapUfo(){
-  setHover(null);
-  ufo.beam = 1;
-  ufo.pending = Math.random()<0.5 ? 'game' : 'flee';   // coin flip, so it stays a surprise
-}
-
-function drawUfo(){
-  const bob = Math.sin(ufo.t*1.9)*3;
-  const x = ufo.x, y = ufo.y + bob;
-
-  if(ufo.beam > 0){
-    const a = Math.max(0, Math.min(1, ufo.beam));
-    const g = ctx.createLinearGradient(x, y, x, y+120);
-    g.addColorStop(0, 'rgba(217,152,90,'+(0.42*a)+')');
-    g.addColorStop(1, 'rgba(217,152,90,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(x-6, y+4); ctx.lineTo(x+6, y+4);
-    ctx.lineTo(x+30, y+120); ctx.lineTo(x-30, y+120);
-    ctx.closePath(); ctx.fill();
-  }
-
-  ctx.fillStyle = 'rgba(233,228,220,0.30)';            // dome
-  ctx.beginPath(); ctx.ellipse(x, y-4, 8, 7, 0, Math.PI, 0); ctx.fill();
-
-  ctx.fillStyle = 'rgba(233,228,220,0.82)';            // saucer
-  ctx.beginPath(); ctx.ellipse(x, y, 17, 5.5, 0, 0, Math.PI*2); ctx.fill();
-
-  for(let i=-1; i<=1; i++){                            // running lights
-    const lit = 0.45 + 0.55*Math.abs(Math.sin(ufo.t*3 + i));
-    ctx.fillStyle = 'rgba(217,152,90,'+lit+')';
-    ctx.beginPath(); ctx.arc(x + i*9, y+2.5, 1.5, 0, Math.PI*2); ctx.fill();
   }
 }
 
@@ -569,7 +426,7 @@ function frame(now){
 }
 
 function hitTest(sx,sy){
-  if(hitUfo(sx,sy)) return {type:'ufo', obj:UFO_TIP, pos:ufo};   // screen space, so it goes first
+  if(hitUfo(sx,sy)) return ufoHover();   // screen space, so it goes first
   const w = toWorld(sx,sy,par.planet.x,par.planet.y);
   if(state.focused){
     for(const m of state.focused.moons){
@@ -637,10 +494,7 @@ const HOLD_MS=300, MOVE_TOL=12;
 function onMouseMove(x,y){
   mouse.x=x; mouse.y=y; mouse.active=true;   // hover still works under reduced motion
   if(reduced) return;                        // ...but no parallax drift or comet trail
-  pmtx = Math.max(-1, Math.min(1, (x - state.W/2)/(state.W/2)));
-  pmty = Math.max(-1, Math.min(1, (y - state.H/2)/(state.H/2)));
-  trail.push({x, y, life:1});
-  if(trail.length > 12) trail.shift();
+  pointerMoved(x,y);
 }
 
 canvas.addEventListener('pointermove', e=>{
