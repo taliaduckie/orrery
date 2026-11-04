@@ -1,0 +1,8 @@
+{
+  "name": "orrery",
+  "private": true,
+  "description": "interactive orrery as a personal site. no dependencies; this file exists so `npm test` works.",
+  "scripts": {
+    "test": "node --test 'test/**/*.test.mjs'"
+  }
+}

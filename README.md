@@ -28,6 +28,8 @@ engine/       the engine, one concern per module:
   render.js       draws a frame (drawBody is the planet look)
 a11y.js       builds the hidden text outline. shared by orrery.js at runtime and prerender.js at build so the two can't drift
 prerender.js  deploy-time only: bakes that outline into index.html so non-JS crawlers get it
+test/         node --test suites for the engine. env.mjs is the stub browser they boot in; physics.test.mjs pins the comet game's physics
+package.json  no dependencies; exists so `npm test` works
 favicon.svg   lil ringed planet
 preview.png   social share image
 photos/       hover-peek + portrait images
@@ -50,6 +52,8 @@ New planet, retitled moon, new color: all content.js, never orrery.js.
 Running locally
 
 python3 -m http.server 8000, open localhost:8000. a server is required now: the engine is ES modules and browsers refuse to load those over file://. deploys straight to GitHub Pages from main, no build step.
+
+npm test (or node --test 'test/**/*.test.mjs') runs the engine tests in plain node, no install. the deploy action runs them first and won't publish a red build. the physics suite builds every route from seeded randomness, reads the launch velocity back off the first two points of the line, and replays it through the aim prediction and the live run: both must trace the line to within 1e-6 and clear every ring, which is what keeps the drawn route honest.
 
 how it works!
 
