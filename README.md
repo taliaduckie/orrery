@@ -1,4 +1,4 @@
-Interactive orrery as a personal site. vanilla JS, single `<canvas>`, no framework, no build step.
+Interactive orrery as a personal site. vanilla JS (ES modules), single `<canvas>`, no framework, no build step.
 
 live @ https://taliaduckie.github.io/orrery/
 
@@ -37,7 +37,7 @@ New planet, retitled moon, new color: all content.js, never orrery.js.
 
 Running locally
 
-python3 -m http.server 8000, open localhost:8000. file:// mostly works but some browsers block local script loading, so a server is safer. deploys straight to GitHub Pages from main, no build step.
+python3 -m http.server 8000, open localhost:8000. a server is required: the engine is an ES module and browsers refuse to load those over file://. deploys straight to GitHub Pages from main, no build step.
 
 how it works!
 
