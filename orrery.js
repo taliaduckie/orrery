@@ -3,20 +3,8 @@
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
 import { CONTENT, SUN, PLANETS, CONSTELLATIONS, CONST_INFO } from './engine/astro.js';
 import { state, view, target, mouse, par, game, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
+import { canvas, ctx, cometCanvas, cctx, tipEl, tipName, tipDesc, moonPanel, mDomain, mTitle, mBody, mLinks, aboutPanel, peekEl, peekImg, backBtn, hintEl } from './engine/dom.js';
 
-const canvas = document.getElementById('stage');
-const ctx = canvas.getContext('2d');
-const tipEl = document.getElementById('tip');
-const tipName = tipEl.querySelector('.t-name');
-const tipDesc = tipEl.querySelector('.t-desc');
-const moonPanel = document.getElementById('moonPanel');
-const mDomain = moonPanel.querySelector('.m-domain');
-const mTitle = moonPanel.querySelector('.m-title');
-const mBody = moonPanel.querySelector('.m-body');
-const mLinks = moonPanel.querySelector('.m-links');
-const aboutPanel = document.getElementById('aboutPanel');
-const backBtn = document.getElementById('backBtn');
-const hintEl = document.getElementById('hint');
 const hintDefault = hintEl.innerHTML;
 
 const SHADOW = {r:34, g:28, b:25};
@@ -120,8 +108,6 @@ let pmx=0, pmy=0, pmtx=0, pmty=0;                  // smoothed + target, [-1,1]
 const PX_BG=2, PX_SUN=3, PX_RING=4, PX_PLANET=6;  // max shift per depth layer
 let constItems = [];
 const trail = [];             // {x,y,life}
-const cometCanvas = document.getElementById('comet');
-const cctx = cometCanvas.getContext('2d');
 
 let meteor = null, nextMeteorIn = 12 + Math.random()*22;   // ambient shooting stars
 
@@ -1048,8 +1034,6 @@ function moonLinks(m){
 }
 
 // card body — phrases listed in a moon's `photos` map become hover-to-peek terms
-const peekEl = document.getElementById('photoPeek');
-const peekImg = peekEl.querySelector('img');
 function appendText(node, text){   // \n → line break, *phrase* → italic
   String(text).split('\n').forEach((line, li)=>{
     if(li) node.appendChild(document.createElement('br'));
