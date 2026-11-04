@@ -3,11 +3,10 @@
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
 import { CONTENT, SUN, PLANETS } from './engine/astro.js';
 import { state, view, target, mouse, par, game, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
-import { canvas, ctx, cometCanvas, cctx, tipEl, tipName, tipDesc, moonPanel, mDomain, mTitle, mBody, mLinks, aboutPanel, peekEl, peekImg, backBtn, hintEl } from './engine/dom.js';
+import { canvas, ctx, cometCanvas, cctx, moonPanel, aboutPanel } from './engine/dom.js';
 import { bgCanvas, constItems, buildBackground, buildConstellations } from './engine/sky.js';
 import { updateOrbits, updateCamera, LAUNCH, SIM_H, SIM_SPEED, gravityAt, hitsBody, escaped, buildCourse, predictPath } from './engine/simulation.js';
-
-const hintDefault = hintEl.innerHTML;
+import { setHover, hideTip, showConstTip, positionConstTip, positionTip, writeHash, applyHashState, setHint, resetHint, setHintOpacity, buildAbout, buildSocial, buildA11y, installUI } from './engine/ui.js';
 
 const SHADOW = {r:34, g:28, b:25};
 
@@ -237,10 +236,10 @@ function update(dt){
     // nobody finds the sandbox on their own, so nudge lingerers toward the ufo
     if(state.nudgeT > 0){
       state.nudgeT -= dt;
-      if(state.nudgeT <= 0) hintEl.innerHTML = hintDefault;
+      if(state.nudgeT <= 0) resetHint();
     } else if(!game.on && !state.focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
       state.idleT += dt;
-      if(state.idleT >= 40){ state.idleT = -60; state.nudgeT = 6; hintEl.innerHTML = 'psst &nbsp;&middot;&nbsp; catch the ufo'; }
+      if(state.idleT >= 40){ state.idleT = -60; state.nudgeT = 6; setHint('psst &nbsp;&middot;&nbsp; catch the ufo'); }
     }
   }
 
@@ -515,7 +514,7 @@ function courseHint(){
   if(game.runMsg) return game.runMsg;
   return 'route ' + (game.level+1) + '/' + LEVELS.length + ' &nbsp;&middot;&nbsp; ' + game.gateIdx + '/' + game.course.gates.length + ' &nbsp;&middot;&nbsp; tries ' + game.tries + ' &nbsp;&middot;&nbsp; f free shoot &nbsp;&middot;&nbsp; esc';
 }
-function syncHint(){ const h=courseHint(); if(h!==game.lastHint){ hintEl.innerHTML=h; game.lastHint=h; } }
+function syncHint(){ const h=courseHint(); if(h!==game.lastHint){ setHint(h); game.lastHint=h; } }
 function resetRun(){ game.gateIdx=0; for(const g of game.course.gates) g.hit=false; }
 function failRun(why){ game.comet=null; game.tries++; resetRun(); game.runMsg = why + ' &nbsp;&middot;&nbsp; pull back to try again'; }
 
@@ -526,16 +525,16 @@ function enterGame(){
   game.level = 0; game.pendingNext = false; game.freeShoot = false; game.savedCourse = null;
   game.course = courseFor(0);   // planets are frozen by now, so the line stays true all game
   if(game.course){ target.scale = courseScale(); target.cx = 0; target.cy = 0; }   // pull back to show the whole line
-  hintEl.innerHTML = courseHint(); game.lastHint = courseHint();
-  hintEl.style.opacity = '0.85';
+  game.lastHint = courseHint(); setHint(game.lastHint);
+  setHintOpacity('0.85');
 }
 function exitGame(){
   game.on = false; game.bodies.length = 0; game.aim = null; game.aiming = false;
   game.course = null; game.comet = null; game.runMsg = ''; game.lastHint = '';
   game.pendingNext = false; game.winT = 0; game.freeShoot = false; game.savedCourse = null;
   target.scale = state.fitScale; target.cx = 0; target.cy = 0;
-  hintEl.innerHTML = hintDefault;
-  hintEl.style.opacity = (state.mode==='system') ? '0.7' : '0';
+  resetHint();
+  setHintOpacity(state.mode==='system' ? '0.7' : '0');
 }
 function launchBody(){
   if(!game.aim) return;
@@ -679,7 +678,7 @@ function frame(now){
 }
 
 function hitTest(sx,sy){
-  if(hitUfo(sx,sy)) return {type:'ufo', obj:UFO_TIP};   // screen space, so it goes first
+  if(hitUfo(sx,sy)) return {type:'ufo', obj:UFO_TIP, pos:ufo};   // screen space, so it goes first
   const w = toWorld(sx,sy,par.planet.x,par.planet.y);
   if(state.focused){
     for(const m of state.focused.moons){
@@ -702,15 +701,6 @@ function hitTest(sx,sy){
   return null;
 }
 
-function showTip(obj){
-  const isSun = obj===SUN;   // the sun's name already sits under it permanently
-  tipName.textContent = isSun ? '' : (obj.name || obj.label || '');
-  tipName.style.display = isSun ? 'none' : '';
-  tipDesc.textContent = obj.desc || '';
-  tipDesc.style.display = obj.desc ? '' : 'none';
-  tipEl.classList.add('show');
-}
-function hideTip(){ tipEl.classList.remove('show'); }
 // a body under/near the cursor wins over the constellation dwell (planets orbit, so
 // hoverObj can go stale between pointermoves and a constellation would sneak through)
 function nearInteractive(){
@@ -731,256 +721,6 @@ function nearInteractive(){
   const ss = toScreen(0,0, par.sun.x, par.sun.y);
   return Math.hypot(mouse.x-ss.x, mouse.y-ss.y) < SUN.r*view.scale + pad;
 }
-function showConstTip(item){
-  tipName.textContent = item.name;
-  tipName.style.display = '';
-  tipDesc.textContent = item.starNames.join(' · ');
-  tipDesc.style.display = '';
-  tipEl.classList.add('show');
-  positionConstTip(item);
-}
-// one #tip so one placer, clamped here so both callers can't drift apart
-function placeTip(cx, ty){
-  const w = tipEl.offsetWidth, h = tipEl.offsetHeight, m = 10;
-  tipEl.style.left = Math.max(m + w/2, Math.min(state.W - m - w/2, cx)) + 'px';
-  tipEl.style.top  = Math.max(m + h,   Math.min(state.H - m,       ty)) + 'px';
-}
-function positionConstTip(item){
-  let minY=Infinity, sumX=0;
-  for(const p of item.pts){ sumX += p.bx; if(p.by<minY) minY=p.by; }
-  placeTip(sumX/item.pts.length + par.bg.x, minY + par.bg.y - 12);
-}
-function positionTip(){
-  if(!state.hoverObj) return;
-  const o = state.hoverObj.obj;
-  let wx,wy,r,off;
-  if(state.hoverObj.type==='ufo'){ if(ufo) placeTip(ufo.x, ufo.y - 16); return; }
-  if(state.hoverObj.type==='sun'){ wx=0;wy=0;r=SUN.r; off=par.sun; }
-  else { wx=o.wx; wy=o.wy; r=o.r; off=par.planet; }
-  const s = toScreen(wx,wy,off.x,off.y);
-  placeTip(s.x, s.y - r*view.scale - 14);
-}
-
-function setHover(obj){
-  if(obj===state.hoverObj || (obj && state.hoverObj && obj.obj===state.hoverObj.obj)) {
-    state.hoverObj = obj; return;
-  }
-  state.hoverObj = obj;
-  if(obj){
-    canvas.style.cursor = 'pointer';
-    showTip(obj.type==='sun'?SUN:obj.obj);
-    positionTip();
-  } else {
-    canvas.style.cursor = 'default';
-    hideTip();
-  }
-}
-
-function focusPlanet(p){
-  state.mode='planet'; state.focused=p;
-  closeMoon();
-  state.focusTargetScale = planetFocusScale(p);
-  target.scale = state.focusTargetScale;
-  target.cx = p.wx; target.cy = p.wy;
-  backBtn.classList.add('show');
-  hintEl.style.opacity = '0';
-  setHover(null);
-}
-function pullBack(){
-  state.mode='system'; state.focused=null;
-  target.scale = state.fitScale; target.cx=0; target.cy=0;
-  backBtn.classList.remove('show');
-  closeMoon();
-  hintEl.style.opacity = '0.7';
-  setHover(null);
-}
-
-// panels are real dialogs: named, focus moves in, focus comes back out.
-// deliberately NOT aria-modal, because the canvas behind stays live to a mouse
-// and claiming modality the app doesn't enforce would be a lie to AT.
-let lastFocus = null;
-function panelOpened(el){
-  if(el.getAttribute('aria-hidden') === 'false') return;   // already open, don't re-steal focus
-  lastFocus = document.activeElement;
-  el.setAttribute('aria-hidden','false');
-  try { el.focus({preventScroll:true}); } catch(_){ el.focus(); }
-}
-function panelClosed(el){
-  if(el.getAttribute('aria-hidden') === 'true') return;
-  const had = el.contains(document.activeElement) || document.activeElement === el;
-  el.setAttribute('aria-hidden','true');
-  if(had){
-    if(lastFocus && document.contains(lastFocus)) { try { lastFocus.focus({preventScroll:true}); } catch(_){} }
-    else if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  }
-  lastFocus = null;
-}
-
-function openMoon(m, parent){
-  state.openMoonObj = m;
-  mDomain.textContent = parent.name;
-  mTitle.textContent = m.name;
-  renderMoonBody(m);
-  mLinks.innerHTML = '';                              // one, many, or no links per moon
-  for(const l of moonLinks(m)){
-    const a = document.createElement('a');
-    a.className = 'm-link'; a.href = l.href;
-    a.target = '_blank'; a.rel = 'noopener';          // outbound links open in a new tab
-    a.innerHTML = (l.label || 'open') + ' &rarr;';
-    mLinks.appendChild(a);
-  }
-  moonPanel.classList.add('show');
-  // place near moon, clamped to view
-  const s = toScreen(m.wx,m.wy);
-  const cw = moonPanel.offsetWidth || 320, ch = moonPanel.offsetHeight || 200;
-  let left = s.x + 24, top = s.y - ch/2;
-  if(left + cw > state.W-16) left = s.x - cw - 24;
-  if(left < 16) left = Math.min(state.W-cw-16, Math.max(16,(state.W-cw)/2));
-  top = Math.max(16, Math.min(state.H-ch-16, top));
-  moonPanel.style.left = left+'px';
-  moonPanel.style.top = top+'px';
-  panelOpened(moonPanel);
-}
-function closeMoon(){ state.openMoonObj = null; moonPanel.classList.remove('show'); hidePeek(); panelClosed(moonPanel); }
-moonPanel.querySelector('.m-close').addEventListener('click', ()=>writeHash(state.focused?state.focused.slug:''));
-// a moon can carry `links: [{label, href}, ...]` for several, or a single `href`
-function moonLinks(m){
-  if(Array.isArray(m.links)) return m.links.filter(l=>l && l.href && l.href!=='#');
-  if(m.href && m.href!=='#') return [{ label:'open', href:m.href }];
-  return [];
-}
-
-// card body — phrases listed in a moon's `photos` map become hover-to-peek terms
-function appendText(node, text){   // \n → line break, *phrase* → italic
-  String(text).split('\n').forEach((line, li)=>{
-    if(li) node.appendChild(document.createElement('br'));
-    line.split(/\*([^*]+)\*/g).forEach((seg, i)=>{
-      if(!seg) return;
-      if(i % 2){ const em = document.createElement('em'); em.textContent = seg; node.appendChild(em); }
-      else node.appendChild(document.createTextNode(seg));
-    });
-  });
-}
-function renderMoonBody(m){
-  mBody.textContent = '';
-  mBody.style.display = m.body ? '' : 'none';   // no empty gap for links-only moons
-  if(!m.photos){ appendText(mBody, m.body || ''); return; }
-  const found = [];
-  for(const term in m.photos){
-    const i = m.body.indexOf(term);
-    if(i >= 0) found.push({ i, term, src: m.photos[term] });
-  }
-  found.sort((a,b)=>a.i-b.i);
-  let pos = 0;
-  for(const f of found){
-    if(f.i < pos) continue;
-    if(f.i > pos) mBody.appendChild(document.createTextNode(m.body.slice(pos, f.i)));
-    const sp = document.createElement('span');
-    sp.className = 'm-photo';
-    sp.textContent = f.term;
-    sp.dataset.img = f.src;
-    mBody.appendChild(sp);
-    pos = f.i + f.term.length;
-  }
-  mBody.appendChild(document.createTextNode(m.body.slice(pos)));
-}
-function showPeek(t){
-  peekImg.src = t.dataset.img;
-  peekImg.alt = t.textContent;          // the phrase that triggered it
-  peekEl.setAttribute('aria-hidden','false');
-  const r = t.getBoundingClientRect();
-  peekEl.style.left = Math.max(135, Math.min(state.W-135, r.left + r.width/2)) + 'px';
-  if(r.top > 240){ peekEl.style.top = (r.top - 10)+'px'; peekEl.style.transform = 'translate(-50%,-100%)'; }
-  else            { peekEl.style.top = (r.bottom + 10)+'px'; peekEl.style.transform = 'translate(-50%,0)'; }
-  peekEl.classList.add('show');
-}
-function hidePeek(){ peekEl.classList.remove('show'); peekEl.setAttribute('aria-hidden','true'); }
-mBody.addEventListener('mouseover', e=>{ const t = e.target.closest('.m-photo'); if(t) showPeek(t); });
-mBody.addEventListener('mouseout',  e=>{ if(e.target.closest('.m-photo')) hidePeek(); });
-mBody.addEventListener('click',     e=>{ const t = e.target.closest('.m-photo'); if(!t) return; peekEl.classList.contains('show') ? hidePeek() : showPeek(t); }); // tap toggles
-
-function openAbout(){ closeMoon(); aboutPanel.classList.add('show'); hintEl.style.opacity='0'; setHover(null); panelOpened(aboutPanel); }
-function closeAbout(){ aboutPanel.classList.remove('show'); if(state.mode==='system') hintEl.style.opacity='0.7'; panelClosed(aboutPanel); }
-aboutPanel.querySelector('.a-close').addEventListener('click', ()=>writeHash(''));
-
-function buildAbout(){
-  const a = CONTENT.sun.about || {};
-  const kickerEl = aboutPanel.querySelector('.a-kicker');
-  kickerEl.textContent = a.kicker || '';
-  kickerEl.style.display = a.kicker ? '' : 'none';
-  aboutPanel.querySelector('.a-name').textContent = a.name || '';
-  const bodyEl = aboutPanel.querySelector('.a-body');
-  bodyEl.innerHTML = '';
-  (a.paragraphs||[]).forEach(txt=>{
-    const p = document.createElement('p'); p.textContent = txt; bodyEl.appendChild(p);
-  });
-  const linksEl = aboutPanel.querySelector('.a-links');
-  linksEl.innerHTML = '';
-  (a.links||[]).forEach(l=>{
-    const el = document.createElement('a');
-    el.className = 'a-link'; el.href = l.href || '#';
-    el.innerHTML = l.label + ' &rarr;';
-    if((l.href||'#')==='#') el.addEventListener('click', e=>e.preventDefault());
-    linksEl.appendChild(el);
-  });
-}
-
-function buildSocial(){
-  const el = document.getElementById('social');
-  if(!el) return;
-  el.innerHTML = '';
-  (CONTENT.social||[]).forEach(l=>{
-    const a = document.createElement('a');
-    a.href = l.href || '#';
-    a.textContent = l.label;
-    a.target = '_blank'; a.rel = 'noopener';
-    if((l.href||'#')==='#') a.addEventListener('click', e=>e.preventDefault());
-    el.appendChild(a);
-  });
-}
-
-// hidden text outline for search engines & screen readers (a11y.js is the single source)
-function buildA11y(){
-  const el = document.getElementById('a11y');
-  if(!el || typeof a11yOutline !== 'function') return;
-  el.innerHTML = a11yOutline(CONTENT);
-}
-
-// url hash <-> state (so back/forward work)
-function currentHash(){ return decodeURIComponent(location.hash.replace(/^#/,'')); }
-function writeHash(h){
-  const want = h || '';
-  if(currentHash() !== want){
-    if(want) location.hash = '#'+want;
-    else history.replaceState(null, '', location.pathname + location.search);
-  }
-  applyHashState();
-}
-function applyHashState(){
-  const h = currentHash();
-  const slash = h.indexOf('/');
-  const pslug = slash<0 ? h : h.slice(0,slash);
-  const mslug = slash<0 ? '' : h.slice(slash+1);
-  if(!h){
-    if(aboutPanel.classList.contains('show')) closeAbout();
-    if(moonPanel.classList.contains('show')) closeMoon();
-    if(state.focused) pullBack();
-    return;
-  }
-  if(pslug==='about'){
-    if(state.focused) pullBack();
-    closeMoon();
-    if(!aboutPanel.classList.contains('show')) openAbout();
-    return;
-  }
-  const p = PLANETS.find(x=>x.slug===pslug);
-  if(!p){ writeHash(''); return; }
-  if(aboutPanel.classList.contains('show')) closeAbout();
-  if(state.focused!==p) focusPlanet(p);
-  const m = mslug ? p.moons.find(x=>x.slug===mslug) : null;
-  if(m) openMoon(m, p); else closeMoon();
-}
-window.addEventListener('hashchange', applyHashState);
 
 function handleClick(sx,sy){
   if(hitUfo(sx,sy)){ tapUfo(); return; }   // before everything: it floats above the world,
@@ -1036,7 +776,7 @@ canvas.addEventListener('pointerdown', e=>{
     game.aim={x0:a.x,y0:a.y,x1:w.x,y1:w.y}; game.aiming=true; return; }
   down = {x:e.clientX, y:e.clientY, t:performance.now()};
   state.idleT = 0;
-  if(state.nudgeT > 0){ state.nudgeT = 0; hintEl.innerHTML = hintDefault; }
+  if(state.nudgeT > 0){ state.nudgeT = 0; resetHint(); }
   moved=false; holdActive=false;
   if(e.pointerType!=='mouse'){
     holdTimer = setTimeout(()=>{
@@ -1067,8 +807,6 @@ canvas.addEventListener('pointerleave', e=>{
   if(game.on){ game.aiming=false; game.aim=null; if(e.pointerType==='mouse') mouse.active=false; return; }
   if(e.pointerType==='mouse'){ setHover(null); mouse.active=false; }
 });
-
-backBtn.addEventListener('click', ()=>writeHash(''));
 
 window.addEventListener('keydown', e=>{
   if(game.on && (e.key==='f' || e.key==='F')){ toggleFree(); return; }
@@ -1105,6 +843,7 @@ function boot(){
   buildAbout();
   buildSocial();
   buildA11y();
+  installUI();
   resize();
   view.scale = state.fitScale; target.scale = state.fitScale;
   view.cx=0; view.cy=0; target.cx=0; target.cy=0;
