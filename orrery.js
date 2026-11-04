@@ -1,90 +1,14 @@
 /* orrery.js — the engine, as an ES module (so it can be split into engine/ modules
    step by step). Reads the SITE object from content.js; content should be changed there. */
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
-import { CONTENT, SUN, PLANETS, CONSTELLATIONS, CONST_INFO } from './engine/astro.js';
+import { CONTENT, SUN, PLANETS } from './engine/astro.js';
 import { state, view, target, mouse, par, game, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
 import { canvas, ctx, cometCanvas, cctx, tipEl, tipName, tipDesc, moonPanel, mDomain, mTitle, mBody, mLinks, aboutPanel, peekEl, peekImg, backBtn, hintEl } from './engine/dom.js';
+import { bgCanvas, constItems, buildBackground, buildConstellations } from './engine/sky.js';
 
 const hintDefault = hintEl.innerHTML;
 
 const SHADOW = {r:34, g:28, b:25};
-
-const bgCanvas = document.createElement('canvas');
-const bgctx = bgCanvas.getContext('2d');
-
-const scatter = [];
-for(let i=0;i<320;i++){
-  scatter.push({ fx:Math.random(), fy:Math.random(), r:0.3+Math.random()*0.9, a:0.04+Math.random()*0.13 });
-}
-
-function buildBackground(){
-  if(!state.W || !state.H) return;
-  bgCanvas.width = state.W*state.DPR; bgCanvas.height = state.H*state.DPR;
-  bgctx.setTransform(state.DPR,0,0,state.DPR,0,0);
-
-  // darrrrk desaturated blue night sky
-  const g = bgctx.createRadialGradient(state.W*0.5, state.H*0.42, 0, state.W*0.5, state.H*0.5, Math.max(state.W,state.H)*0.85);
-  g.addColorStop(0,    '#0d1626');
-  g.addColorStop(0.55, '#0a101e');
-  g.addColorStop(1,    '#05080f');
-  bgctx.fillStyle = g; bgctx.fillRect(0,0,state.W,state.H);
-
-  scatter.forEach(s=>{
-    bgctx.beginPath();
-    bgctx.arc(s.fx*state.W, s.fy*state.H, s.r, 0, Math.PI*2);
-    bgctx.fillStyle = 'rgba(205,214,230,'+s.a+')';
-    bgctx.fill();
-  });
-}
-
-let constPlaced = false;
-function constLocalRadius(c){    // half-size as a fraction of minDim
-  let m=0;
-  for(const s of c.stars){ const dx=s[0]-0.5, dy=s[1]-0.5; m=Math.max(m, Math.hypot(dx,dy)); }
-  return m * c.scale;
-}
-function placeConstellations(){
-  const minDim = Math.min(state.W,state.H), pad = 10;
-  const cx = state.W/2, cy = state.H/2;
-  const keepOut = state.systemExtent*state.fitScale + 14;   // the orrery's reach on screen — stay off it
-  const order = CONSTELLATIONS.map(c=>({ c, r: constLocalRadius(c)*minDim }))
-                              .sort((a,b)=> b.r - a.r);   // biggest first
-  const done = [];
-  for(const it of order){
-    const r = it.r;
-    const minX=r+pad, maxX=Math.max(r+pad, state.W-r-pad);
-    const minY=r+pad, maxY=Math.max(r+pad, state.H-r-pad);
-    let bx=0, by=0, ok=false;
-    for(let a=0;a<1200;a++){
-      const x = minX + Math.random()*(maxX-minX);
-      const y = minY + Math.random()*(maxY-minY);
-      if(Math.hypot(x-cx, y-cy) < keepOut + r) continue;   // would sit over the orrery
-      let good = true;
-      for(const p of done){ if(Math.hypot(x-p.x,y-p.y) < r+p.r+pad){ good=false; break; } }
-      if(good){ bx=x; by=y; ok=true; break; }
-    }
-    it.c.placed = ok;   // no room out here? leave it out of the sky entirely
-    if(ok){ done.push({ x:bx, y:by, r }); it.c.ax = bx/state.W; it.c.ay = by/state.H; }
-  }
-  constPlaced = true;
-}
-
-function buildConstellations(){
-  if(!constPlaced) placeConstellations();
-  constItems = [];
-  const minDim = Math.min(state.W,state.H);
-  CONSTELLATIONS.forEach((c,i)=>{
-    if(!c.placed) return;
-    const size = c.scale*minDim, ax = c.ax*state.W, ay = c.ay*state.H;
-    const cos = Math.cos(c.rot||0), sin = Math.sin(c.rot||0);
-    const pts = c.stars.map(([lx,ly])=>{
-      const dx = lx-0.5, dy = ly-0.5;
-      return { bx: ax + (dx*cos - dy*sin)*size, by: ay + (dx*sin + dy*cos)*size, op: 0.16 };
-    });
-    const info = CONST_INFO[i] || {};
-    constItems.push({ pts, edges: c.edges, name: info.name || '', starNames: info.stars || [] });
-  });
-}
 
 function resize(){
   state.DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -106,7 +30,6 @@ let lastT = performance.now();
 
 let pmx=0, pmy=0, pmtx=0, pmty=0;                  // smoothed + target, [-1,1]
 const PX_BG=2, PX_SUN=3, PX_RING=4, PX_PLANET=6;  // max shift per depth layer
-let constItems = [];
 const trail = [];             // {x,y,life}
 
 let meteor = null, nextMeteorIn = 12 + Math.random()*22;   // ambient shooting stars
