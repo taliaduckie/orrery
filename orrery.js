@@ -2,6 +2,7 @@
    step by step). Reads the SITE object from content.js; content should be changed there. */
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
 import { CONTENT, SUN, PLANETS, CONSTELLATIONS, CONST_INFO } from './engine/astro.js';
+import { state, view, target, mouse, par, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
@@ -20,23 +21,6 @@ const hintDefault = hintEl.innerHTML;
 
 const SHADOW = {r:34, g:28, b:25};
 
-let W=0, H=0, DPR=1;
-let fitScale=1;
-const view = { scale:1, cx:0, cy:0 };
-const target = { scale:1, cx:0, cy:0 };
-let systemExtent = 600;
-
-function computeFit(){
-  systemExtent = 0;
-  PLANETS.forEach(p=>{ const er = p.ring ? p.r*p.ring.outer : p.r; systemExtent = Math.max(systemExtent, p.a*(1+p.e) + er); });
-  fitScale = Math.min(W,H) / (2*(systemExtent + 48)) * 0.96;
-}
-function planetFocusScale(p){
-  let maxMoon = 0;
-  p.moons.forEach(m=>{ maxMoon = Math.max(maxMoon, m.dr*(1+m.e) + m.r); });
-  return Math.min(W,H) / (2*(maxMoon + p.r + 36)) * 0.82;
-}
-
 const bgCanvas = document.createElement('canvas');
 const bgctx = bgCanvas.getContext('2d');
 
@@ -46,20 +30,20 @@ for(let i=0;i<320;i++){
 }
 
 function buildBackground(){
-  if(!W || !H) return;
-  bgCanvas.width = W*DPR; bgCanvas.height = H*DPR;
-  bgctx.setTransform(DPR,0,0,DPR,0,0);
+  if(!state.W || !state.H) return;
+  bgCanvas.width = state.W*state.DPR; bgCanvas.height = state.H*state.DPR;
+  bgctx.setTransform(state.DPR,0,0,state.DPR,0,0);
 
   // darrrrk desaturated blue night sky
-  const g = bgctx.createRadialGradient(W*0.5, H*0.42, 0, W*0.5, H*0.5, Math.max(W,H)*0.85);
+  const g = bgctx.createRadialGradient(state.W*0.5, state.H*0.42, 0, state.W*0.5, state.H*0.5, Math.max(state.W,state.H)*0.85);
   g.addColorStop(0,    '#0d1626');
   g.addColorStop(0.55, '#0a101e');
   g.addColorStop(1,    '#05080f');
-  bgctx.fillStyle = g; bgctx.fillRect(0,0,W,H);
+  bgctx.fillStyle = g; bgctx.fillRect(0,0,state.W,state.H);
 
   scatter.forEach(s=>{
     bgctx.beginPath();
-    bgctx.arc(s.fx*W, s.fy*H, s.r, 0, Math.PI*2);
+    bgctx.arc(s.fx*state.W, s.fy*state.H, s.r, 0, Math.PI*2);
     bgctx.fillStyle = 'rgba(205,214,230,'+s.a+')';
     bgctx.fill();
   });
@@ -72,16 +56,16 @@ function constLocalRadius(c){    // half-size as a fraction of minDim
   return m * c.scale;
 }
 function placeConstellations(){
-  const minDim = Math.min(W,H), pad = 10;
-  const cx = W/2, cy = H/2;
-  const keepOut = systemExtent*fitScale + 14;   // the orrery's reach on screen — stay off it
+  const minDim = Math.min(state.W,state.H), pad = 10;
+  const cx = state.W/2, cy = state.H/2;
+  const keepOut = state.systemExtent*state.fitScale + 14;   // the orrery's reach on screen — stay off it
   const order = CONSTELLATIONS.map(c=>({ c, r: constLocalRadius(c)*minDim }))
                               .sort((a,b)=> b.r - a.r);   // biggest first
   const done = [];
   for(const it of order){
     const r = it.r;
-    const minX=r+pad, maxX=Math.max(r+pad, W-r-pad);
-    const minY=r+pad, maxY=Math.max(r+pad, H-r-pad);
+    const minX=r+pad, maxX=Math.max(r+pad, state.W-r-pad);
+    const minY=r+pad, maxY=Math.max(r+pad, state.H-r-pad);
     let bx=0, by=0, ok=false;
     for(let a=0;a<1200;a++){
       const x = minX + Math.random()*(maxX-minX);
@@ -92,7 +76,7 @@ function placeConstellations(){
       if(good){ bx=x; by=y; ok=true; break; }
     }
     it.c.placed = ok;   // no room out here? leave it out of the sky entirely
-    if(ok){ done.push({ x:bx, y:by, r }); it.c.ax = bx/W; it.c.ay = by/H; }
+    if(ok){ done.push({ x:bx, y:by, r }); it.c.ax = bx/state.W; it.c.ay = by/state.H; }
   }
   constPlaced = true;
 }
@@ -100,10 +84,10 @@ function placeConstellations(){
 function buildConstellations(){
   if(!constPlaced) placeConstellations();
   constItems = [];
-  const minDim = Math.min(W,H);
+  const minDim = Math.min(state.W,state.H);
   CONSTELLATIONS.forEach((c,i)=>{
     if(!c.placed) return;
-    const size = c.scale*minDim, ax = c.ax*W, ay = c.ay*H;
+    const size = c.scale*minDim, ax = c.ax*state.W, ay = c.ay*state.H;
     const cos = Math.cos(c.rot||0), sin = Math.sin(c.rot||0);
     const pts = c.stars.map(([lx,ly])=>{
       const dx = lx-0.5, dy = ly-0.5;
@@ -115,41 +99,25 @@ function buildConstellations(){
 }
 
 function resize(){
-  DPR = Math.min(window.devicePixelRatio||1, 2);
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = W*DPR; canvas.height = H*DPR;
-  canvas.style.width = W+'px'; canvas.style.height = H+'px';
-  cometCanvas.width = W*DPR; cometCanvas.height = H*DPR;
-  cometCanvas.style.width = W+'px'; cometCanvas.style.height = H+'px';
+  state.DPR = Math.min(window.devicePixelRatio||1, 2);
+  state.W = window.innerWidth; state.H = window.innerHeight;
+  canvas.width = state.W*state.DPR; canvas.height = state.H*state.DPR;
+  canvas.style.width = state.W+'px'; canvas.style.height = state.H+'px';
+  cometCanvas.width = state.W*state.DPR; cometCanvas.height = state.H*state.DPR;
+  cometCanvas.style.width = state.W+'px'; cometCanvas.style.height = state.H+'px';
   computeFit();
   buildBackground();
   buildConstellations();
   if(gameOn && course){ target.scale=courseScale(); target.cx=0; target.cy=0; }
-  else if(mode==='system'){ target.scale=fitScale; target.cx=0; target.cy=0; }
-  else if(focused){ target.scale = planetFocusScale(focused); }
+  else if(state.mode==='system'){ target.scale=state.fitScale; target.cx=0; target.cy=0; }
+  else if(state.focused){ target.scale = planetFocusScale(state.focused); }
 }
 window.addEventListener('resize', resize);
 
-/* projection timeeeee */
-function toScreen(wx,wy,ox,oy){
-  return { x: W/2 + (ox||0) + (wx-view.cx)*view.scale, y: H/2 + (oy||0) + (wy-view.cy)*view.scale };
-}
-function toWorld(sx,sy,ox,oy){
-  return { x: (sx-W/2-(ox||0))/view.scale + view.cx, y: (sy-H/2-(oy||0))/view.scale + view.cy };
-}
-
-let mode = 'system';          // 'system' | 'planet'
-let focused = null;
-let focusTargetScale = 1;
-let hoverObj = null;          // {type, obj, parent?}
-let openMoonObj = null;       // the moon whose card is up, so it holds still while u read
-let idleT = 0, nudgeT = 0;    // idle timer + how long the ufo nudge stays up
 let lastT = performance.now();
 
-const mouse = { x:0, y:0, active:false };
 let pmx=0, pmy=0, pmtx=0, pmty=0;                  // smoothed + target, [-1,1]
 const PX_BG=2, PX_SUN=3, PX_RING=4, PX_PLANET=6;  // max shift per depth layer
-const par = { bg:{x:0,y:0}, sun:{x:0,y:0}, ring:{x:0,y:0}, planet:{x:0,y:0} };
 let constItems = [];
 const trail = [];             // {x,y,life}
 const cometCanvas = document.getElementById('comet');
@@ -189,8 +157,8 @@ const CONST_HOVER_R = 70, CONST_DWELL = 0.6;   // px radius, seconds
 let constHover = null, constDwell = 0, constShown = false;
 
 function applyWorld(offx,offy){
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  ctx.translate(W/2+offx, H/2+offy);
+  ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
+  ctx.translate(state.W/2+offx, state.H/2+offy);
   ctx.scale(view.scale, view.scale);
   ctx.translate(-view.cx, -view.cy);
 }
@@ -333,14 +301,14 @@ function ellipsePos(a,b,angle,rot){
 
 function isPlanetPaused(p){
   if(gameOn) return true;   // course mode needs a static field or the line is a lie
-  if(p===focused) return true;
-  if(hoverObj && hoverObj.type==='planet' && hoverObj.obj===p) return true;
+  if(p===state.focused) return true;
+  if(state.hoverObj && state.hoverObj.type==='planet' && state.hoverObj.obj===p) return true;
   return false;
 }
 function isMoonPaused(m){
   if(gameOn) return true;
-  if(m === openMoonObj) return true;
-  return hoverObj && hoverObj.type==='moon' && hoverObj.obj===m;
+  if(m === state.openMoonObj) return true;
+  return state.hoverObj && state.hoverObj.type==='moon' && state.hoverObj.obj===m;
 }
 
 function update(dt){
@@ -356,7 +324,7 @@ function update(dt){
   });
 
   if(winT > 0){ winT += dt; if(winT > 3.4){ winT = 0; if(pendingNext){ pendingNext = false; advanceLevel(); } } }
-  if(focused){ target.cx = focused.wx; target.cy = focused.wy; }
+  if(state.focused){ target.cx = state.focused.wx; target.cy = state.focused.wy; }
 
   // ease camera shit
   const k = reduced ? 1 : (1 - Math.pow(0.0009, dt));   // reduced motion: snap instead of ease
@@ -376,7 +344,7 @@ function update(dt){
   if(!reduced){
     if(meteor){
       meteor.x += meteor.vx*dt; meteor.y += meteor.vy*dt; meteor.life -= dt;
-      if(meteor.life<=0 || meteor.y>H+120 || meteor.x<-120 || meteor.x>W+120) meteor = null;
+      if(meteor.life<=0 || meteor.y>state.H+120 || meteor.x<-120 || meteor.x>state.W+120) meteor = null;
     } else {
       nextMeteorIn -= dt;
       if(nextMeteorIn<=0){ spawnMeteor(); nextMeteorIn = 90 + Math.random()*120; }
@@ -394,20 +362,20 @@ function update(dt){
           // stays truthy so hitUfo won't let you chase it down and re-roll the coin
         }
       }
-      if(ufo && (ufo.x < -90 || ufo.x > W+90)) ufo = null;
+      if(ufo && (ufo.x < -90 || ufo.x > state.W+90)) ufo = null;
     } else if(!gameOn){                          // no new arrivals mid-sandbox
       nextUfoIn -= dt;
       if(nextUfoIn<=0){ spawnUfo(); nextUfoIn = 60 + Math.random()*40; }
     }
-    if(!ufo && hoverObj && hoverObj.type==='ufo') setHover(null);
+    if(!ufo && state.hoverObj && state.hoverObj.type==='ufo') setHover(null);
 
     // nobody finds the sandbox on their own, so nudge lingerers toward the ufo
-    if(nudgeT > 0){
-      nudgeT -= dt;
-      if(nudgeT <= 0) hintEl.innerHTML = hintDefault;
-    } else if(!gameOn && !focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
-      idleT += dt;
-      if(idleT >= 40){ idleT = -60; nudgeT = 6; hintEl.innerHTML = 'psst &nbsp;&middot;&nbsp; catch the ufo'; }
+    if(state.nudgeT > 0){
+      state.nudgeT -= dt;
+      if(state.nudgeT <= 0) hintEl.innerHTML = hintDefault;
+    } else if(!gameOn && !state.focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
+      state.idleT += dt;
+      if(state.idleT >= 40){ state.idleT = -60; state.nudgeT = 6; hintEl.innerHTML = 'psst &nbsp;&middot;&nbsp; catch the ufo'; }
     }
   }
 
@@ -445,7 +413,7 @@ function update(dt){
   }
 
   // dwell on a constellation (when nothing else is hovered) to reveal its stars
-  if(!gameOn && mouse.active && !hoverObj && !nearInteractive()){
+  if(!gameOn && mouse.active && !state.hoverObj && !nearInteractive()){
     let best=null, bestD=CONST_HOVER_R;
     for(const item of constItems){
       for(const p of item.pts){
@@ -459,38 +427,38 @@ function update(dt){
     if(!constHover && constShown){ hideTip(); constShown = false; }
     if(constShown) positionConstTip(constHover);
   } else {
-    if(constShown){ if(!hoverObj) hideTip(); constShown = false; }
+    if(constShown){ if(!state.hoverObj) hideTip(); constShown = false; }
     constHover = null; constDwell = 0;
   }
 }
 
 function render(){
   ctx.setTransform(1,0,0,1,0,0);
-  ctx.fillStyle = '#05080f'; ctx.fillRect(0,0,W*DPR,H*DPR);
-  ctx.drawImage(bgCanvas, par.bg.x*DPR, par.bg.y*DPR);
-  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.fillStyle = '#05080f'; ctx.fillRect(0,0,state.W*state.DPR,state.H*state.DPR);
+  ctx.drawImage(bgCanvas, par.bg.x*state.DPR, par.bg.y*state.DPR);
+  ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
 
   drawConstellations();
   if(meteor) drawMeteor();
 
   let prog = 0;
-  if(focused){
-    prog = (view.scale - fitScale) / (focusTargetScale - fitScale);
+  if(state.focused){
+    prog = (view.scale - state.fitScale) / (state.focusTargetScale - state.fitScale);
     prog = Math.max(0, Math.min(1, prog));
   }
-  const otherAlpha = focused ? (1 - prog*0.92) : 1;
+  const otherAlpha = state.focused ? (1 - prog*0.92) : 1;
 
   // this is taking FOREVER wauhgh
   applyWorld(par.ring.x, par.ring.y);
   PLANETS.forEach(p=>{
-    const a = (p===focused) ? prog*0.5 + (1-prog)*1 : otherAlpha;
+    const a = (p===state.focused) ? prog*0.5 + (1-prog)*1 : otherAlpha;
     drawOrbit(p.a,p.b,p.rot, a*0.9);
   });
   if(winT>0) PLANETS.forEach((p,i)=>{ const w=winRing(i); if(w>0) drawOrbit(p.a,p.b,p.rot,w); });
-  if(focused && prog>0.02){
+  if(state.focused && prog>0.02){
     ctx.save();
-    ctx.translate(focused.wx, focused.wy);
-    focused.moons.forEach(m=>{ drawOrbit(m.dr,m.b,m.rot, prog*0.85); });
+    ctx.translate(state.focused.wx, state.focused.wy);
+    state.focused.moons.forEach(m=>{ drawOrbit(m.dr,m.b,m.rot, prog*0.85); });
     ctx.restore();
   }
 
@@ -504,17 +472,17 @@ function render(){
 
   applyWorld(par.planet.x, par.planet.y);
   PLANETS.forEach(p=>{
-    const a = (p===focused) ? 1 : otherAlpha;
+    const a = (p===state.focused) ? 1 : otherAlpha;
     const opts = p.pattern ? {pattern:p.pattern, seed:p.seed} : null;
     if(p.ring) drawRingedBody(p.wx,p.wy,p.r,p.color,a,p.ring,opts);
     else drawBody(p.wx,p.wy,p.r,p.color,a,opts);
   });
-  if(focused && prog>0.02){
-    focused.moons.forEach(m=>{ drawBody(m.wx,m.wy,m.r,m.color,prog); });
+  if(state.focused && prog>0.02){
+    state.focused.moons.forEach(m=>{ drawBody(m.wx,m.wy,m.r,m.color,prog); });
   }
   if(gameOn) drawSandbox();
 
-  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
   drawLabels(prog, otherAlpha);
   if(ufo) drawUfo();   // last: it's a screen-space overlay, and handleClick gives it hit priority
 
@@ -548,8 +516,8 @@ function drawConstellations(){
 }
 
 function drawComet(){
-  cctx.setTransform(DPR,0,0,DPR,0,0);
-  cctx.clearRect(0,0,W,H);
+  cctx.setTransform(state.DPR,0,0,state.DPR,0,0);
+  cctx.clearRect(0,0,state.W,state.H);
   for(const t of trail){
     const rad = Math.max(0.1, 7*t.life);
     const g = cctx.createRadialGradient(t.x,t.y,0, t.x,t.y, rad);
@@ -563,9 +531,9 @@ function drawComet(){
 function spawnMeteor(){
   const dir = Math.random()<0.5 ? 1 : -1;
   const ang = Math.PI*0.18 + Math.random()*Math.PI*0.16;   // below horizontal
-  const speed = (W+H)*0.32;
+  const speed = (state.W+state.H)*0.32;
   meteor = {
-    x: W*(0.15+Math.random()*0.7), y: H*(Math.random()*0.3),
+    x: state.W*(0.15+Math.random()*0.7), y: state.H*(Math.random()*0.3),
     vx: dir*Math.cos(ang)*speed, vy: Math.sin(ang)*speed,
     life: 1, len: 80+Math.random()*70
   };
@@ -586,9 +554,9 @@ function drawMeteor(){
 function spawnUfo(){
   const dir = Math.random()<0.5 ? 1 : -1;
   ufo = {
-    x: dir>0 ? -50 : W+50,
-    y: H*(0.12 + Math.random()*0.45),
-    vx: dir*(W+H)*0.035,   // slow enough to actually be tapped
+    x: dir>0 ? -50 : state.W+50,
+    y: state.H*(0.12 + Math.random()*0.45),
+    vx: dir*(state.W+state.H)*0.035,   // slow enough to actually be tapped
     t: 0,
     beam: 0,               // counts down while the tractor beam is lit
     pending: null          // what to do once the beam finishes: 'game' | 'flee'
@@ -654,7 +622,7 @@ function hitsBody(x,y){
 // fly a candidate through the frozen field, null if it dies or wanders off
 // fly a candidate through the frozen field, null if it dies or wanders off.
 // SIM_H must match the live run exactly or the drawn line can't actually be followed.
-function flyPath(x,y,vx,vy,steps,outR,target){
+function flyPath(x,y,vx,vy,steps,outR,turnTarget){
   const pts=[{x:x,y:y}]; let turned=0, px=x, py=y;
   for(let i=0;i<steps;i++){
     const g=gravityAt(x,y);
@@ -663,7 +631,7 @@ function flyPath(x,y,vx,vy,steps,outR,target){
     if(escaped(x,y,vx,vy,outR)) return null;
     turned += Math.abs(Math.atan2(py*x-px*y, px*x+py*y));
     px=x; py=y; pts.push({x:x,y:y});
-    if(turned >= target) return {pts:pts};
+    if(turned >= turnTarget) return {pts:pts};
   }
   return null;
 }
@@ -705,7 +673,7 @@ function predictPath(vx,vy,steps){
   }
   return out;
 }
-function courseScale(){ return Math.min(W,H) / (2*(course.viewR + 50)) * 0.96; }
+function courseScale(){ return Math.min(state.W,state.H) / (2*(course.viewR + 50)) * 0.96; }
 function winCourse(){
   comet = null; winT = 0.0001; pendingNext = true;
   level++;
@@ -724,7 +692,7 @@ function toggleFree(){
     traceT = 1.4; gateIdx = 0; runMsg = '';   // route already traced, don't redraw it
   } else {
     freeShoot = true; savedCourse = course; course = null; runMsg = '';
-    target.scale = fitScale; target.cx = 0; target.cy = 0;
+    target.scale = state.fitScale; target.cx = 0; target.cy = 0;
   }
 }
 function advanceLevel(){
@@ -771,9 +739,9 @@ function exitGame(){
   gameOn = false; bodies.length = 0; aim = null; aiming = false;
   course = null; comet = null; runMsg = ''; lastHint = '';
   pendingNext = false; winT = 0; freeShoot = false; savedCourse = null;
-  target.scale = fitScale; target.cx = 0; target.cy = 0;
+  target.scale = state.fitScale; target.cx = 0; target.cy = 0;
   hintEl.innerHTML = hintDefault;
-  hintEl.style.opacity = (mode==='system') ? '0.7' : '0';
+  hintEl.style.opacity = (state.mode==='system') ? '0.7' : '0';
 }
 function launchBody(){
   if(!aim) return;
@@ -868,7 +836,7 @@ function drawSandbox(){
       ctx.stroke();
       const sp = toScreen(tx,ty,par.planet.x,par.planet.y);
       ctx.save();
-      ctx.setTransform(DPR,0,0,DPR,0,0);
+      ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
       ctx.font='400 11px "IM Fell English", serif';
       ctx.textAlign='left'; ctx.textBaseline='middle';
       ctx.fillStyle='rgba(255,250,236,0.7)';
@@ -888,7 +856,7 @@ function drawLabels(prog, otherAlpha){
 
   {
     const s = toScreen(0,0,par.sun.x,par.sun.y);
-    const a = (focused ? otherAlpha : 1);
+    const a = (state.focused ? otherAlpha : 1);
     ctx.font = '15px "IM Fell English", serif';   // matches the #social links
     ctx.letterSpacing = '.4px';
     ctx.fillStyle = rgba(hexRgb('#f6f3ee'), 0.78*a);
@@ -898,7 +866,7 @@ function drawLabels(prog, otherAlpha){
 
   // planet name only as the "you are here" heading when focused (hover uses the tooltip)
   PLANETS.forEach(p=>{
-    const a = (p===focused) ? prog : 0;
+    const a = (p===state.focused) ? prog : 0;
     if(a<=0.03) return;
     const s = toScreen(p.wx,p.wy,par.planet.x,par.planet.y);
     ctx.font = '700 ' + Math.round(15 + p.r*0.10) + 'px "IM Fell English", serif';
@@ -912,20 +880,20 @@ function frame(now){
   if(dt>0.05) dt=0.05; // clamp after tab-switch
   update(dt);
   render();
-  if(hoverObj) positionTip();
+  if(state.hoverObj) positionTip();
   requestAnimationFrame(frame);
 }
 
 function hitTest(sx,sy){
   if(hitUfo(sx,sy)) return {type:'ufo', obj:UFO_TIP};   // screen space, so it goes first
   const w = toWorld(sx,sy,par.planet.x,par.planet.y);
-  if(focused){
-    for(const m of focused.moons){
+  if(state.focused){
+    for(const m of state.focused.moons){
       const rr = Math.max(m.r, 14/view.scale); // generous touch target
-      if(Math.hypot(w.x-m.wx, w.y-m.wy) <= rr*1.25) return {type:'moon', obj:m, parent:focused};
+      if(Math.hypot(w.x-m.wx, w.y-m.wy) <= rr*1.25) return {type:'moon', obj:m, parent:state.focused};
     }
-    const pr = Math.max(focused.r, 16/view.scale);
-    if(Math.hypot(w.x-focused.wx, w.y-focused.wy) <= pr) return {type:'planet', obj:focused};
+    const pr = Math.max(state.focused.r, 16/view.scale);
+    if(Math.hypot(w.x-state.focused.wx, w.y-state.focused.wy) <= pr) return {type:'planet', obj:state.focused};
     return null;
   }
   let best=null, bestD=Infinity;
@@ -953,10 +921,10 @@ function hideTip(){ tipEl.classList.remove('show'); }
 // hoverObj can go stale between pointermoves and a constellation would sneak through)
 function nearInteractive(){
   const pad = 26;
-  if(focused){
-    let s = toScreen(focused.wx, focused.wy, par.planet.x, par.planet.y);
-    if(Math.hypot(mouse.x-s.x, mouse.y-s.y) < focused.r*view.scale + pad) return true;
-    for(const m of focused.moons){
+  if(state.focused){
+    let s = toScreen(state.focused.wx, state.focused.wy, par.planet.x, par.planet.y);
+    if(Math.hypot(mouse.x-s.x, mouse.y-s.y) < state.focused.r*view.scale + pad) return true;
+    for(const m of state.focused.moons){
       s = toScreen(m.wx, m.wy, par.planet.x, par.planet.y);
       if(Math.hypot(mouse.x-s.x, mouse.y-s.y) < Math.max(m.r*view.scale, 10) + pad) return true;
     }
@@ -980,8 +948,8 @@ function showConstTip(item){
 // one #tip so one placer, clamped here so both callers can't drift apart
 function placeTip(cx, ty){
   const w = tipEl.offsetWidth, h = tipEl.offsetHeight, m = 10;
-  tipEl.style.left = Math.max(m + w/2, Math.min(W - m - w/2, cx)) + 'px';
-  tipEl.style.top  = Math.max(m + h,   Math.min(H - m,       ty)) + 'px';
+  tipEl.style.left = Math.max(m + w/2, Math.min(state.W - m - w/2, cx)) + 'px';
+  tipEl.style.top  = Math.max(m + h,   Math.min(state.H - m,       ty)) + 'px';
 }
 function positionConstTip(item){
   let minY=Infinity, sumX=0;
@@ -989,21 +957,21 @@ function positionConstTip(item){
   placeTip(sumX/item.pts.length + par.bg.x, minY + par.bg.y - 12);
 }
 function positionTip(){
-  if(!hoverObj) return;
-  const o = hoverObj.obj;
+  if(!state.hoverObj) return;
+  const o = state.hoverObj.obj;
   let wx,wy,r,off;
-  if(hoverObj.type==='ufo'){ if(ufo) placeTip(ufo.x, ufo.y - 16); return; }
-  if(hoverObj.type==='sun'){ wx=0;wy=0;r=SUN.r; off=par.sun; }
+  if(state.hoverObj.type==='ufo'){ if(ufo) placeTip(ufo.x, ufo.y - 16); return; }
+  if(state.hoverObj.type==='sun'){ wx=0;wy=0;r=SUN.r; off=par.sun; }
   else { wx=o.wx; wy=o.wy; r=o.r; off=par.planet; }
   const s = toScreen(wx,wy,off.x,off.y);
   placeTip(s.x, s.y - r*view.scale - 14);
 }
 
 function setHover(obj){
-  if(obj===hoverObj || (obj && hoverObj && obj.obj===hoverObj.obj)) {
-    hoverObj = obj; return;
+  if(obj===state.hoverObj || (obj && state.hoverObj && obj.obj===state.hoverObj.obj)) {
+    state.hoverObj = obj; return;
   }
-  hoverObj = obj;
+  state.hoverObj = obj;
   if(obj){
     canvas.style.cursor = 'pointer';
     showTip(obj.type==='sun'?SUN:obj.obj);
@@ -1015,18 +983,18 @@ function setHover(obj){
 }
 
 function focusPlanet(p){
-  mode='planet'; focused=p;
+  state.mode='planet'; state.focused=p;
   closeMoon();
-  focusTargetScale = planetFocusScale(p);
-  target.scale = focusTargetScale;
+  state.focusTargetScale = planetFocusScale(p);
+  target.scale = state.focusTargetScale;
   target.cx = p.wx; target.cy = p.wy;
   backBtn.classList.add('show');
   hintEl.style.opacity = '0';
   setHover(null);
 }
 function pullBack(){
-  mode='system'; focused=null;
-  target.scale = fitScale; target.cx=0; target.cy=0;
+  state.mode='system'; state.focused=null;
+  target.scale = state.fitScale; target.cx=0; target.cy=0;
   backBtn.classList.remove('show');
   closeMoon();
   hintEl.style.opacity = '0.7';
@@ -1055,7 +1023,7 @@ function panelClosed(el){
 }
 
 function openMoon(m, parent){
-  openMoonObj = m;
+  state.openMoonObj = m;
   mDomain.textContent = parent.name;
   mTitle.textContent = m.name;
   renderMoonBody(m);
@@ -1072,15 +1040,15 @@ function openMoon(m, parent){
   const s = toScreen(m.wx,m.wy);
   const cw = moonPanel.offsetWidth || 320, ch = moonPanel.offsetHeight || 200;
   let left = s.x + 24, top = s.y - ch/2;
-  if(left + cw > W-16) left = s.x - cw - 24;
-  if(left < 16) left = Math.min(W-cw-16, Math.max(16,(W-cw)/2));
-  top = Math.max(16, Math.min(H-ch-16, top));
+  if(left + cw > state.W-16) left = s.x - cw - 24;
+  if(left < 16) left = Math.min(state.W-cw-16, Math.max(16,(state.W-cw)/2));
+  top = Math.max(16, Math.min(state.H-ch-16, top));
   moonPanel.style.left = left+'px';
   moonPanel.style.top = top+'px';
   panelOpened(moonPanel);
 }
-function closeMoon(){ openMoonObj = null; moonPanel.classList.remove('show'); hidePeek(); panelClosed(moonPanel); }
-moonPanel.querySelector('.m-close').addEventListener('click', ()=>writeHash(focused?focused.slug:''));
+function closeMoon(){ state.openMoonObj = null; moonPanel.classList.remove('show'); hidePeek(); panelClosed(moonPanel); }
+moonPanel.querySelector('.m-close').addEventListener('click', ()=>writeHash(state.focused?state.focused.slug:''));
 // a moon can carry `links: [{label, href}, ...]` for several, or a single `href`
 function moonLinks(m){
   if(Array.isArray(m.links)) return m.links.filter(l=>l && l.href && l.href!=='#');
@@ -1129,7 +1097,7 @@ function showPeek(t){
   peekImg.alt = t.textContent;          // the phrase that triggered it
   peekEl.setAttribute('aria-hidden','false');
   const r = t.getBoundingClientRect();
-  peekEl.style.left = Math.max(135, Math.min(W-135, r.left + r.width/2)) + 'px';
+  peekEl.style.left = Math.max(135, Math.min(state.W-135, r.left + r.width/2)) + 'px';
   if(r.top > 240){ peekEl.style.top = (r.top - 10)+'px'; peekEl.style.transform = 'translate(-50%,-100%)'; }
   else            { peekEl.style.top = (r.bottom + 10)+'px'; peekEl.style.transform = 'translate(-50%,0)'; }
   peekEl.classList.add('show');
@@ -1140,7 +1108,7 @@ mBody.addEventListener('mouseout',  e=>{ if(e.target.closest('.m-photo')) hidePe
 mBody.addEventListener('click',     e=>{ const t = e.target.closest('.m-photo'); if(!t) return; peekEl.classList.contains('show') ? hidePeek() : showPeek(t); }); // tap toggles
 
 function openAbout(){ closeMoon(); aboutPanel.classList.add('show'); hintEl.style.opacity='0'; setHover(null); panelOpened(aboutPanel); }
-function closeAbout(){ aboutPanel.classList.remove('show'); if(mode==='system') hintEl.style.opacity='0.7'; panelClosed(aboutPanel); }
+function closeAbout(){ aboutPanel.classList.remove('show'); if(state.mode==='system') hintEl.style.opacity='0.7'; panelClosed(aboutPanel); }
 aboutPanel.querySelector('.a-close').addEventListener('click', ()=>writeHash(''));
 
 function buildAbout(){
@@ -1189,9 +1157,9 @@ function buildA11y(){
 // url hash <-> state (so back/forward work)
 function currentHash(){ return decodeURIComponent(location.hash.replace(/^#/,'')); }
 function writeHash(h){
-  const target = h || '';
-  if(currentHash() !== target){
-    if(target) location.hash = '#'+target;
+  const want = h || '';
+  if(currentHash() !== want){
+    if(want) location.hash = '#'+want;
     else history.replaceState(null, '', location.pathname + location.search);
   }
   applyHashState();
@@ -1204,11 +1172,11 @@ function applyHashState(){
   if(!h){
     if(aboutPanel.classList.contains('show')) closeAbout();
     if(moonPanel.classList.contains('show')) closeMoon();
-    if(focused) pullBack();
+    if(state.focused) pullBack();
     return;
   }
   if(pslug==='about'){
-    if(focused) pullBack();
+    if(state.focused) pullBack();
     closeMoon();
     if(!aboutPanel.classList.contains('show')) openAbout();
     return;
@@ -1216,7 +1184,7 @@ function applyHashState(){
   const p = PLANETS.find(x=>x.slug===pslug);
   if(!p){ writeHash(''); return; }
   if(aboutPanel.classList.contains('show')) closeAbout();
-  if(focused!==p) focusPlanet(p);
+  if(state.focused!==p) focusPlanet(p);
   const m = mslug ? p.moons.find(x=>x.slug===mslug) : null;
   if(m) openMoon(m, p); else closeMoon();
 }
@@ -1228,15 +1196,15 @@ function handleClick(sx,sy){
   const hit = hitTest(sx,sy);
   if(!hit){
     // tapping empty space backs out one level — same ladder as esc
-    if(moonPanel.classList.contains('show')) writeHash(focused?focused.slug:'');
+    if(moonPanel.classList.contains('show')) writeHash(state.focused?state.focused.slug:'');
     else if(aboutPanel.classList.contains('show')) writeHash('');
-    else if(mode==='planet') writeHash('');
+    else if(state.mode==='planet') writeHash('');
     return;
   }
-  if(hit.type==='planet' && mode==='system'){ writeHash(hit.obj.slug); }
+  if(hit.type==='planet' && state.mode==='system'){ writeHash(hit.obj.slug); }
   else if(hit.type==='moon'){ writeHash(hit.parent.slug + '/' + hit.obj.slug); }
-  else if(hit.type==='planet' && mode==='planet'){ /* already focused */ }
-  else if(hit.type==='sun'){ writeHash(mode==='planet' ? '' : 'about'); }
+  else if(hit.type==='planet' && state.mode==='planet'){ /* already focused */ }
+  else if(hit.type==='sun'){ writeHash(state.mode==='planet' ? '' : 'about'); }
 }
 
 // pointer / touch handling
@@ -1246,8 +1214,8 @@ const HOLD_MS=300, MOVE_TOL=12;
 function onMouseMove(x,y){
   mouse.x=x; mouse.y=y; mouse.active=true;   // hover still works under reduced motion
   if(reduced) return;                        // ...but no parallax drift or comet trail
-  pmtx = Math.max(-1, Math.min(1, (x - W/2)/(W/2)));
-  pmty = Math.max(-1, Math.min(1, (y - H/2)/(H/2)));
+  pmtx = Math.max(-1, Math.min(1, (x - state.W/2)/(state.W/2)));
+  pmty = Math.max(-1, Math.min(1, (y - state.H/2)/(state.H/2)));
   trail.push({x, y, life:1});
   if(trail.length > 12) trail.shift();
 }
@@ -1275,8 +1243,8 @@ canvas.addEventListener('pointerdown', e=>{
     const a = course ? course.start : w;   // course mode has a fixed slingshot
     aim={x0:a.x,y0:a.y,x1:w.x,y1:w.y}; aiming=true; return; }
   down = {x:e.clientX, y:e.clientY, t:performance.now()};
-  idleT = 0;
-  if(nudgeT > 0){ nudgeT = 0; hintEl.innerHTML = hintDefault; }
+  state.idleT = 0;
+  if(state.nudgeT > 0){ state.nudgeT = 0; hintEl.innerHTML = hintDefault; }
   moved=false; holdActive=false;
   if(e.pointerType!=='mouse'){
     holdTimer = setTimeout(()=>{
@@ -1314,9 +1282,9 @@ window.addEventListener('keydown', e=>{
   if(gameOn && (e.key==='f' || e.key==='F')){ toggleFree(); return; }
   if(e.key==='Escape'){
     if(gameOn){ exitGame(); return; }
-    if(moonPanel.classList.contains('show')) writeHash(focused?focused.slug:'');
+    if(moonPanel.classList.contains('show')) writeHash(state.focused?state.focused.slug:'');
     else if(aboutPanel.classList.contains('show')) writeHash('');
-    else if(mode==='planet') writeHash('');
+    else if(state.mode==='planet') writeHash('');
   }
 });
 
@@ -1346,7 +1314,7 @@ function boot(){
   buildSocial();
   buildA11y();
   resize();
-  view.scale = fitScale; target.scale = fitScale;
+  view.scale = state.fitScale; target.scale = state.fitScale;
   view.cx=0; view.cy=0; target.cx=0; target.cy=0;
   update(0);
   applyHashState();
