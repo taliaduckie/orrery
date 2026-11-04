@@ -2,7 +2,7 @@
    step by step). Reads the SITE object from content.js; content should be changed there. */
 import { hexRgb, rgba, lighten, darken, mix, rng, reduced } from './engine/utils.js';
 import { CONTENT, SUN, PLANETS, CONSTELLATIONS, CONST_INFO } from './engine/astro.js';
-import { state, view, target, mouse, par, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
+import { state, view, target, mouse, par, game, computeFit, planetFocusScale, toScreen, toWorld } from './engine/state.js';
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
@@ -108,7 +108,7 @@ function resize(){
   computeFit();
   buildBackground();
   buildConstellations();
-  if(gameOn && course){ target.scale=courseScale(); target.cx=0; target.cy=0; }
+  if(game.on && game.course){ target.scale=courseScale(); target.cx=0; target.cy=0; }
   else if(state.mode==='system'){ target.scale=state.fitScale; target.cx=0; target.cy=0; }
   else if(state.focused){ target.scale = planetFocusScale(state.focused); }
 }
@@ -133,17 +133,8 @@ const UFO_HIT = 30;   // fat tap radius, it's tiny and moving
 
 // hidden comet sandbox (konami) — tune to taste
 const G=1, SUN_MASS=9e5, PLANET_MASS=2600, LAUNCH=0.5;
-let gameOn=false, aiming=false, aim=null, firstPull=true;
-const bodies=[];
 // SOFT is a softening length of ~16 units. planets are r18-31, so close passes really deflect
 const SOFT=260, SIM_H=1/120, SIM_SPEED=5;   // fixed step, run at 5x so a route is ~7-14s
-let simAcc=0;
-let course=null, comet=null, gateIdx=0, tries=0, runMsg='', lastHint='';
-let traceT=0;   // 0>1 draws the route, 1>1.4 fades the rings in after
-let winT=0;     // celebration clock, 0 = not celebrating
-let pendingNext=false;
-let freeShoot=false, savedCourse=null;
-let level=0;
 // harder each time: more looping, tighter rings, less of the path predicted for you
 const LEVELS = [
   { turn:Math.PI*1.6, spacing:680, gate:58, preview:2200 },
@@ -300,13 +291,13 @@ function ellipsePos(a,b,angle,rot){
 }
 
 function isPlanetPaused(p){
-  if(gameOn) return true;   // course mode needs a static field or the line is a lie
+  if(game.on) return true;   // course mode needs a static field or the line is a lie
   if(p===state.focused) return true;
   if(state.hoverObj && state.hoverObj.type==='planet' && state.hoverObj.obj===p) return true;
   return false;
 }
 function isMoonPaused(m){
-  if(gameOn) return true;
+  if(game.on) return true;
   if(m === state.openMoonObj) return true;
   return state.hoverObj && state.hoverObj.type==='moon' && state.hoverObj.obj===m;
 }
@@ -323,7 +314,7 @@ function update(dt){
     });
   });
 
-  if(winT > 0){ winT += dt; if(winT > 3.4){ winT = 0; if(pendingNext){ pendingNext = false; advanceLevel(); } } }
+  if(game.winT > 0){ game.winT += dt; if(game.winT > 3.4){ game.winT = 0; if(game.pendingNext){ game.pendingNext = false; advanceLevel(); } } }
   if(state.focused){ target.cx = state.focused.wx; target.cy = state.focused.wy; }
 
   // ease camera shit
@@ -363,7 +354,7 @@ function update(dt){
         }
       }
       if(ufo && (ufo.x < -90 || ufo.x > state.W+90)) ufo = null;
-    } else if(!gameOn){                          // no new arrivals mid-sandbox
+    } else if(!game.on){                          // no new arrivals mid-sandbox
       nextUfoIn -= dt;
       if(nextUfoIn<=0){ spawnUfo(); nextUfoIn = 60 + Math.random()*40; }
     }
@@ -373,47 +364,47 @@ function update(dt){
     if(state.nudgeT > 0){
       state.nudgeT -= dt;
       if(state.nudgeT <= 0) hintEl.innerHTML = hintDefault;
-    } else if(!gameOn && !state.focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
+    } else if(!game.on && !state.focused && !moonPanel.classList.contains('show') && !aboutPanel.classList.contains('show')){
       state.idleT += dt;
       if(state.idleT >= 40){ state.idleT = -60; state.nudgeT = 6; hintEl.innerHTML = 'psst &nbsp;&middot;&nbsp; catch the ufo'; }
     }
   }
 
-  if(gameOn && course){
-    if(traceT < 1.4) traceT = Math.min(1.4, traceT + dt/2.4);
-    if(comet){
-      simAcc += dt*SIM_SPEED;
+  if(game.on && game.course){
+    if(game.traceT < 1.4) game.traceT = Math.min(1.4, game.traceT + dt/2.4);
+    if(game.comet){
+      game.simAcc += dt*SIM_SPEED;
       let n = 0;
-      while(comet && simAcc >= SIM_H && n < 24){
-        simAcc -= SIM_H; n++;
-        const g = gravityAt(comet.x, comet.y);
-        comet.vx += g.ax*SIM_H; comet.vy += g.ay*SIM_H;
-        comet.x  += comet.vx*SIM_H; comet.y += comet.vy*SIM_H;
-        comet.trail.push({x:comet.x,y:comet.y}); if(comet.trail.length>140) comet.trail.shift();
-        const gt = course.gates[gateIdx];
-        if(gt && Math.hypot(comet.x-gt.x, comet.y-gt.y) < course.gateR){ gt.hit = true; gateIdx++; }
-        if(gateIdx >= course.gates.length){
+      while(game.comet && game.simAcc >= SIM_H && n < 24){
+        game.simAcc -= SIM_H; n++;
+        const g = gravityAt(game.comet.x, game.comet.y);
+        game.comet.vx += g.ax*SIM_H; game.comet.vy += g.ay*SIM_H;
+        game.comet.x  += game.comet.vx*SIM_H; game.comet.y += game.comet.vy*SIM_H;
+        game.comet.trail.push({x:game.comet.x,y:game.comet.y}); if(game.comet.trail.length>140) game.comet.trail.shift();
+        const gt = game.course.gates[game.gateIdx];
+        if(gt && Math.hypot(game.comet.x-gt.x, game.comet.y-gt.y) < game.course.gateR){ gt.hit = true; game.gateIdx++; }
+        if(game.gateIdx >= game.course.gates.length){
           winCourse();
-        } else if(hitsBody(comet.x, comet.y)){ failRun('crashed'); }
-        else if(escaped(comet.x, comet.y, comet.vx, comet.vy, course.outR)){ failRun('lost to space'); }
+        } else if(hitsBody(game.comet.x, game.comet.y)){ failRun('crashed'); }
+        else if(escaped(game.comet.x, game.comet.y, game.comet.vx, game.comet.vy, game.course.outR)){ failRun('lost to space'); }
       }
-    } else simAcc = 0;
+    } else game.simAcc = 0;
     syncHint();
-  } else if(gameOn){
-    for(let bi=bodies.length-1; bi>=0; bi--){
-      const bd = bodies[bi];
+  } else if(game.on){
+    for(let bi=game.bodies.length-1; bi>=0; bi--){
+      const bd = game.bodies[bi];
       const g = gravityAt(bd.x, bd.y);
       bd.vx+=g.ax*dt; bd.vy+=g.ay*dt;
       bd.x+=bd.vx*dt; bd.y+=bd.vy*dt;
       bd.trail.push({x:bd.x,y:bd.y}); if(bd.trail.length>36) bd.trail.shift();
       const r2 = bd.x*bd.x + bd.y*bd.y;
-      if(r2 < (SUN.r*0.9)*(SUN.r*0.9) || r2 > 4000*4000) bodies.splice(bi,1);
+      if(r2 < (SUN.r*0.9)*(SUN.r*0.9) || r2 > 4000*4000) game.bodies.splice(bi,1);
     }
     syncHint();
   }
 
   // dwell on a constellation (when nothing else is hovered) to reveal its stars
-  if(!gameOn && mouse.active && !state.hoverObj && !nearInteractive()){
+  if(!game.on && mouse.active && !state.hoverObj && !nearInteractive()){
     let best=null, bestD=CONST_HOVER_R;
     for(const item of constItems){
       for(const p of item.pts){
@@ -454,7 +445,7 @@ function render(){
     const a = (p===state.focused) ? prog*0.5 + (1-prog)*1 : otherAlpha;
     drawOrbit(p.a,p.b,p.rot, a*0.9);
   });
-  if(winT>0) PLANETS.forEach((p,i)=>{ const w=winRing(i); if(w>0) drawOrbit(p.a,p.b,p.rot,w); });
+  if(game.winT>0) PLANETS.forEach((p,i)=>{ const w=winRing(i); if(w>0) drawOrbit(p.a,p.b,p.rot,w); });
   if(state.focused && prog>0.02){
     ctx.save();
     ctx.translate(state.focused.wx, state.focused.wy);
@@ -464,8 +455,8 @@ function render(){
 
   applyWorld(par.sun.x, par.sun.y);
   drawSun();
-  if(winT>0 && winT<2.2){            // the flare going out
-    const k = winT/2.2, rr = SUN.r*(1 + k*7);
+  if(game.winT>0 && game.winT<2.2){            // the flare going out
+    const k = game.winT/2.2, rr = SUN.r*(1 + k*7);
     ctx.strokeStyle = 'rgba(217,152,90,'+(0.5*(1-k))+')'; ctx.lineWidth = 2.5/view.scale;
     ctx.beginPath(); ctx.arc(0,0,rr,0,Math.PI*2); ctx.stroke();
   }
@@ -480,7 +471,7 @@ function render(){
   if(state.focused && prog>0.02){
     state.focused.moons.forEach(m=>{ drawBody(m.wx,m.wy,m.r,m.color,prog); });
   }
-  if(gameOn) drawSandbox();
+  if(game.on) drawSandbox();
 
   ctx.setTransform(state.DPR,0,0,state.DPR,0,0);
   drawLabels(prog, otherAlpha);
@@ -664,100 +655,100 @@ function buildCourse(lv){
 }
 // angry-birds dots: the live prediction for the current pull, same physics as the real run
 function predictPath(vx,vy,steps){
-  let x=course.start.x, y=course.start.y; const out=[];
+  let x=game.course.start.x, y=game.course.start.y; const out=[];
   for(let i=0;i<steps;i++){
     const g=gravityAt(x,y);
     vx+=g.ax*SIM_H; vy+=g.ay*SIM_H; x+=vx*SIM_H; y+=vy*SIM_H;
-    if(hitsBody(x,y) || escaped(x,y,vx,vy,course.outR)) break;
+    if(hitsBody(x,y) || escaped(x,y,vx,vy,game.course.outR)) break;
     if(i%22===0) out.push({x:x,y:y});
   }
   return out;
 }
-function courseScale(){ return Math.min(state.W,state.H) / (2*(course.viewR + 50)) * 0.96; }
+function courseScale(){ return Math.min(state.W,state.H) / (2*(game.course.viewR + 50)) * 0.96; }
 function winCourse(){
-  comet = null; winT = 0.0001; pendingNext = true;
-  level++;
-  runMsg = (level >= LEVELS.length)
+  game.comet = null; game.winT = 0.0001; game.pendingNext = true;
+  game.level++;
+  game.runMsg = (game.level >= LEVELS.length)
     ? 'all four routes flown &nbsp;&middot;&nbsp; that was the hard way'
-    : 'route ' + level + ' of ' + LEVELS.length + ' &nbsp;&middot;&nbsp; a harder one is coming';
+    : 'route ' + game.level + ' of ' + LEVELS.length + ' &nbsp;&middot;&nbsp; a harder one is coming';
 }
 // f drops the route and just lets you fling comets, then picks the route back up
 function toggleFree(){
-  if(!gameOn) return;
-  comet = null; bodies.length = 0; aim = null; aiming = false; lastHint = '';
-  if(freeShoot){
-    freeShoot = false;
-    course = savedCourse || buildCourse(level); savedCourse = null;
-    if(course){ for(const g of course.gates) g.hit = false; target.scale = courseScale(); target.cx = 0; target.cy = 0; }
-    traceT = 1.4; gateIdx = 0; runMsg = '';   // route already traced, don't redraw it
+  if(!game.on) return;
+  game.comet = null; game.bodies.length = 0; game.aim = null; game.aiming = false; game.lastHint = '';
+  if(game.freeShoot){
+    game.freeShoot = false;
+    game.course = game.savedCourse || buildCourse(game.level); game.savedCourse = null;
+    if(game.course){ for(const g of game.course.gates) g.hit = false; target.scale = courseScale(); target.cx = 0; target.cy = 0; }
+    game.traceT = 1.4; game.gateIdx = 0; game.runMsg = '';   // route already traced, don't redraw it
   } else {
-    freeShoot = true; savedCourse = course; course = null; runMsg = '';
+    game.freeShoot = true; game.savedCourse = game.course; game.course = null; game.runMsg = '';
     target.scale = state.fitScale; target.cx = 0; target.cy = 0;
   }
 }
 function advanceLevel(){
-  if(!gameOn) return;
-  if(level >= LEVELS.length){ exitGame(); return; }   // done: back to the orrery, comets and all
-  course = buildCourse(level);
-  if(course){ target.scale = courseScale(); target.cx = 0; target.cy = 0; }
-  traceT = 0; gateIdx = 0; comet = null; tries = 0; runMsg = ''; lastHint = '';
+  if(!game.on) return;
+  if(game.level >= LEVELS.length){ exitGame(); return; }   // done: back to the orrery, comets and all
+  game.course = buildCourse(game.level);
+  if(game.course){ target.scale = courseScale(); target.cx = 0; target.cy = 0; }
+  game.traceT = 0; game.gateIdx = 0; game.comet = null; game.tries = 0; game.runMsg = ''; game.lastHint = '';
 }
 // sequenced flare: sun first, then each orbit ring outward
 function winRing(i){
-  if(winT<=0) return 0;
-  const t = winT - 0.45 - i*0.16;
+  if(game.winT<=0) return 0;
+  const t = game.winT - 0.45 - i*0.16;
   if(t<=0 || t>=0.9) return 0;
   return Math.sin(t/0.9*Math.PI)*0.55;
 }
 function winBoost(){
-  if(winT<=0) return 0;
-  const t = winT - 0.3;
+  if(game.winT<=0) return 0;
+  const t = game.winT - 0.3;
   if(t<=0 || t>=1.6) return 0;
   return Math.sin(t/1.6*Math.PI)*0.42;
 }
 function courseHint(){
-  if(freeShoot) return 'free shoot &nbsp;&middot;&nbsp; fling as many as u like &nbsp;&middot;&nbsp; f for routes &nbsp;&middot;&nbsp; esc to exit';
-  if(!course) return 'comet sandbox &nbsp;&middot;&nbsp; pull back &amp; release to launch &nbsp;&middot;&nbsp; esc to exit';
-  if(runMsg) return runMsg;
-  return 'route ' + (level+1) + '/' + LEVELS.length + ' &nbsp;&middot;&nbsp; ' + gateIdx + '/' + course.gates.length + ' &nbsp;&middot;&nbsp; tries ' + tries + ' &nbsp;&middot;&nbsp; f free shoot &nbsp;&middot;&nbsp; esc';
+  if(game.freeShoot) return 'free shoot &nbsp;&middot;&nbsp; fling as many as u like &nbsp;&middot;&nbsp; f for routes &nbsp;&middot;&nbsp; esc to exit';
+  if(!game.course) return 'comet sandbox &nbsp;&middot;&nbsp; pull back &amp; release to launch &nbsp;&middot;&nbsp; esc to exit';
+  if(game.runMsg) return game.runMsg;
+  return 'route ' + (game.level+1) + '/' + LEVELS.length + ' &nbsp;&middot;&nbsp; ' + game.gateIdx + '/' + game.course.gates.length + ' &nbsp;&middot;&nbsp; tries ' + game.tries + ' &nbsp;&middot;&nbsp; f free shoot &nbsp;&middot;&nbsp; esc';
 }
-function syncHint(){ const h=courseHint(); if(h!==lastHint){ hintEl.innerHTML=h; lastHint=h; } }
-function resetRun(){ gateIdx=0; for(const g of course.gates) g.hit=false; }
-function failRun(why){ comet=null; tries++; resetRun(); runMsg = why + ' &nbsp;&middot;&nbsp; pull back to try again'; }
+function syncHint(){ const h=courseHint(); if(h!==game.lastHint){ hintEl.innerHTML=h; game.lastHint=h; } }
+function resetRun(){ game.gateIdx=0; for(const g of game.course.gates) g.hit=false; }
+function failRun(why){ game.comet=null; game.tries++; resetRun(); game.runMsg = why + ' &nbsp;&middot;&nbsp; pull back to try again'; }
 
 // konami unlocks a little gravity sandbox: drag to launch a comet
 function enterGame(){
-  writeHash(''); gameOn = true; bodies.length = 0; aim = null; aiming = false; firstPull = true;
-  comet = null; gateIdx = 0; tries = 0; runMsg = ''; lastHint = ''; traceT = 0;
-  level = 0; pendingNext = false; freeShoot = false; savedCourse = null;
-  course = buildCourse(0);   // planets are frozen by now, so the line stays true all game
-  if(course){ target.scale = courseScale(); target.cx = 0; target.cy = 0; }   // pull back to show the whole line
-  hintEl.innerHTML = courseHint(); lastHint = courseHint();
+  writeHash(''); game.on = true; game.bodies.length = 0; game.aim = null; game.aiming = false; game.firstPull = true;
+  game.comet = null; game.gateIdx = 0; game.tries = 0; game.runMsg = ''; game.lastHint = ''; game.traceT = 0;
+  game.level = 0; game.pendingNext = false; game.freeShoot = false; game.savedCourse = null;
+  game.course = buildCourse(0);   // planets are frozen by now, so the line stays true all game
+  if(game.course){ target.scale = courseScale(); target.cx = 0; target.cy = 0; }   // pull back to show the whole line
+  hintEl.innerHTML = courseHint(); game.lastHint = courseHint();
   hintEl.style.opacity = '0.85';
 }
 function exitGame(){
-  gameOn = false; bodies.length = 0; aim = null; aiming = false;
-  course = null; comet = null; runMsg = ''; lastHint = '';
-  pendingNext = false; winT = 0; freeShoot = false; savedCourse = null;
+  game.on = false; game.bodies.length = 0; game.aim = null; game.aiming = false;
+  game.course = null; game.comet = null; game.runMsg = ''; game.lastHint = '';
+  game.pendingNext = false; game.winT = 0; game.freeShoot = false; game.savedCourse = null;
   target.scale = state.fitScale; target.cx = 0; target.cy = 0;
   hintEl.innerHTML = hintDefault;
   hintEl.style.opacity = (state.mode==='system') ? '0.7' : '0';
 }
 function launchBody(){
-  if(!aim) return;
-  firstPull = false;   // teaching arrow only shows until the first launch
-  if(course){          // one comet, from the anchor, opposite the pull
-    comet = { x:course.start.x, y:course.start.y, vx:(aim.x0-aim.x1)*LAUNCH, vy:(aim.y0-aim.y1)*LAUNCH, trail:[] };
-    resetRun(); runMsg = '';
+  if(!game.aim) return;
+  game.firstPull = false;   // teaching arrow only shows until the first launch
+  if(game.course){          // one comet, from the anchor, opposite the pull
+    game.comet = { x:game.course.start.x, y:game.course.start.y, vx:(game.aim.x0-game.aim.x1)*LAUNCH, vy:(game.aim.y0-game.aim.y1)*LAUNCH, trail:[] };
+    resetRun(); game.runMsg = '';
     return;
   }
   // slingshot: fling opposite the pull-back
-  bodies.push({ x:aim.x0, y:aim.y0, vx:(aim.x0-aim.x1)*LAUNCH, vy:(aim.y0-aim.y1)*LAUNCH, trail:[] });
-  if(bodies.length > 40) bodies.shift();
+  game.bodies.push({ x:game.aim.x0, y:game.aim.y0, vx:(game.aim.x0-game.aim.x1)*LAUNCH, vy:(game.aim.y0-game.aim.y1)*LAUNCH, trail:[] });
+  if(game.bodies.length > 40) game.bodies.shift();
 }
 function drawCourse(){
-  const pts = course.pts;
-  const drawn = Math.max(1, Math.floor(Math.min(traceT,1) * (pts.length-1)));
+  const pts = game.course.pts;
+  const drawn = Math.max(1, Math.floor(Math.min(game.traceT,1) * (pts.length-1)));
 
   ctx.setLineDash([7/view.scale, 9/view.scale]);
   ctx.strokeStyle='rgba(217,152,90,0.30)'; ctx.lineWidth=1.7/view.scale;
@@ -766,47 +757,47 @@ function drawCourse(){
   ctx.stroke();
   ctx.setLineDash([]);
 
-  if(traceT < 1){   // the tracer drawing the route
+  if(game.traceT < 1){   // the tracer drawing the route
     const h = pts[drawn];
     ctx.beginPath(); ctx.arc(h.x, h.y, 4/view.scale, 0, Math.PI*2);
     ctx.fillStyle='rgba(255,244,224,0.95)'; ctx.fill();
   }
 
-  if(aim && aiming){   // small circles: where this pull actually goes
-    const pv = predictPath((aim.x0-aim.x1)*LAUNCH, (aim.y0-aim.y1)*LAUNCH, course.preview);
+  if(game.aim && game.aiming){   // small circles: where this pull actually goes
+    const pv = predictPath((game.aim.x0-game.aim.x1)*LAUNCH, (game.aim.y0-game.aim.y1)*LAUNCH, game.course.preview);
     for(let i=0;i<pv.length;i++){
       ctx.beginPath(); ctx.arc(pv[i].x, pv[i].y, 2.4/view.scale, 0, Math.PI*2);
       ctx.fillStyle = 'rgba(255,250,238,'+(0.8 - 0.55*(i/Math.max(1,pv.length)))+')'; ctx.fill();
     }
   }
 
-  const gAlpha = Math.max(0, Math.min(1, (traceT-1)/0.4));
-  for(let i=0;i<course.gates.length && gAlpha>0;i++){
-    const g = course.gates[i];
-    ctx.beginPath(); ctx.arc(g.x, g.y, course.gateR, 0, Math.PI*2);
+  const gAlpha = Math.max(0, Math.min(1, (game.traceT-1)/0.4));
+  for(let i=0;i<game.course.gates.length && gAlpha>0;i++){
+    const g = game.course.gates[i];
+    ctx.beginPath(); ctx.arc(g.x, g.y, game.course.gateR, 0, Math.PI*2);
     if(g.hit){ ctx.strokeStyle='rgba(217,152,90,'+(0.9*gAlpha)+')';  ctx.lineWidth=2.4/view.scale; }
-    else if(i===gateIdx){ ctx.strokeStyle='rgba(233,228,220,'+(0.6*gAlpha)+')'; ctx.lineWidth=1.8/view.scale; }
+    else if(i===game.gateIdx){ ctx.strokeStyle='rgba(233,228,220,'+(0.6*gAlpha)+')'; ctx.lineWidth=1.8/view.scale; }
     else { ctx.strokeStyle='rgba(233,228,220,'+(0.22*gAlpha)+')'; ctx.lineWidth=1.1/view.scale; }
     ctx.stroke();
   }
 
-  if(comet){
-    const t = comet.trail;
+  if(game.comet){
+    const t = game.comet.trail;
     for(let i=1;i<t.length;i++){
       ctx.strokeStyle='rgba(255,248,232,'+((i/t.length)*0.6)+')'; ctx.lineWidth=1.5/view.scale;
       ctx.beginPath(); ctx.moveTo(t[i-1].x,t[i-1].y); ctx.lineTo(t[i].x,t[i].y); ctx.stroke();
     }
-    ctx.beginPath(); ctx.arc(comet.x, comet.y, 3.4/view.scale, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(game.comet.x, game.comet.y, 3.4/view.scale, 0, Math.PI*2);
     ctx.fillStyle='rgba(255,250,238,0.95)'; ctx.fill();
   }
 
-  ctx.beginPath(); ctx.arc(course.start.x, course.start.y, 4.5/view.scale, 0, Math.PI*2);
-  ctx.fillStyle = comet ? 'rgba(255,250,238,0.35)' : 'rgba(255,250,238,0.95)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(game.course.start.x, game.course.start.y, 4.5/view.scale, 0, Math.PI*2);
+  ctx.fillStyle = game.comet ? 'rgba(255,250,238,0.35)' : 'rgba(255,250,238,0.95)'; ctx.fill();
 }
 
 function drawSandbox(){
-  if(course) drawCourse();
-  for(const bd of bodies){
+  if(game.course) drawCourse();
+  for(const bd of game.bodies){
     const t = bd.trail;
     for(let i=1;i<t.length;i++){
       ctx.strokeStyle = 'rgba(255,248,232,'+((i/t.length)*0.5)+')';
@@ -816,21 +807,21 @@ function drawSandbox(){
     ctx.beginPath(); ctx.arc(bd.x,bd.y, 3/view.scale, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(255,250,238,0.95)'; ctx.fill();
   }
-  if(aim){
+  if(game.aim){
     // the pull-back (elastic), dashed
     ctx.setLineDash([6/view.scale, 6/view.scale]);
     ctx.strokeStyle = 'rgba(255,250,236,0.4)'; ctx.lineWidth = 1.2/view.scale;
-    ctx.beginPath(); ctx.moveTo(aim.x0,aim.y0); ctx.lineTo(aim.x1,aim.y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(game.aim.x0,game.aim.y0); ctx.lineTo(game.aim.x1,game.aim.y1); ctx.stroke();
     ctx.setLineDash([]);
 
     // first-pull teaching cue: a small arrow + tag pointing the launch way
-    const dx = aim.x0-aim.x1, dy = aim.y0-aim.y1, len = Math.hypot(dx,dy);
-    if(firstPull && len*view.scale > 6){
+    const dx = game.aim.x0-game.aim.x1, dy = game.aim.y0-game.aim.y1, len = Math.hypot(dx,dy);
+    if(game.firstPull && len*view.scale > 6){
       const ux=dx/len, uy=dy/len, s=34/view.scale, hw=7/view.scale, px=-uy, py=ux;
-      const tx=aim.x0+ux*s, ty=aim.y0+uy*s;
+      const tx=game.aim.x0+ux*s, ty=game.aim.y0+uy*s;
       ctx.strokeStyle='rgba(255,250,236,0.75)'; ctx.lineWidth=1.4/view.scale;
       ctx.beginPath();
-      ctx.moveTo(aim.x0,aim.y0); ctx.lineTo(tx,ty);
+      ctx.moveTo(game.aim.x0,game.aim.y0); ctx.lineTo(tx,ty);
       ctx.moveTo(tx,ty); ctx.lineTo(tx-ux*hw+px*hw*0.6, ty-uy*hw+py*hw*0.6);
       ctx.moveTo(tx,ty); ctx.lineTo(tx-ux*hw-px*hw*0.6, ty-uy*hw-py*hw*0.6);
       ctx.stroke();
@@ -845,7 +836,7 @@ function drawSandbox(){
     }
 
     // the comet waiting at the anchor
-    ctx.beginPath(); ctx.arc(aim.x0,aim.y0, 3.2/view.scale, 0, Math.PI*2);
+    ctx.beginPath(); ctx.arc(game.aim.x0,game.aim.y0, 3.2/view.scale, 0, Math.PI*2);
     ctx.fillStyle = 'rgba(255,250,238,0.95)'; ctx.fill();
   }
 }
@@ -1221,9 +1212,9 @@ function onMouseMove(x,y){
 }
 
 canvas.addEventListener('pointermove', e=>{
-  if(gameOn){
+  if(game.on){
     if(e.pointerType==='mouse') onMouseMove(e.clientX, e.clientY);
-    if(aiming && aim){ const w=toWorld(e.clientX,e.clientY,par.planet.x,par.planet.y); aim.x1=w.x; aim.y1=w.y; }
+    if(game.aiming && game.aim){ const w=toWorld(e.clientX,e.clientY,par.planet.x,par.planet.y); game.aim.x1=w.x; game.aim.y1=w.y; }
     return;
   }
   if(e.pointerType==='mouse'){
@@ -1239,9 +1230,9 @@ canvas.addEventListener('pointermove', e=>{
 });
 
 canvas.addEventListener('pointerdown', e=>{
-  if(gameOn){ const w=toWorld(e.clientX,e.clientY,par.planet.x,par.planet.y);
-    const a = course ? course.start : w;   // course mode has a fixed slingshot
-    aim={x0:a.x,y0:a.y,x1:w.x,y1:w.y}; aiming=true; return; }
+  if(game.on){ const w=toWorld(e.clientX,e.clientY,par.planet.x,par.planet.y);
+    const a = game.course ? game.course.start : w;   // course mode has a fixed slingshot
+    game.aim={x0:a.x,y0:a.y,x1:w.x,y1:w.y}; game.aiming=true; return; }
   down = {x:e.clientX, y:e.clientY, t:performance.now()};
   state.idleT = 0;
   if(state.nudgeT > 0){ state.nudgeT = 0; hintEl.innerHTML = hintDefault; }
@@ -1255,7 +1246,7 @@ canvas.addEventListener('pointerdown', e=>{
 });
 
 canvas.addEventListener('pointerup', e=>{
-  if(gameOn){ if(aiming) launchBody(); aiming=false; aim=null; return; }
+  if(game.on){ if(game.aiming) launchBody(); game.aiming=false; game.aim=null; return; }
   if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; }
   const wasHold = holdActive;
   const small = down && Math.hypot(e.clientX-down.x, e.clientY-down.y) <= MOVE_TOL;
@@ -1267,21 +1258,21 @@ canvas.addEventListener('pointerup', e=>{
   holdActive=false; down=null;
 });
 canvas.addEventListener('pointercancel', ()=>{
-  if(gameOn){ aiming=false; aim=null; return; }
+  if(game.on){ game.aiming=false; game.aim=null; return; }
   if(holdTimer){clearTimeout(holdTimer);holdTimer=null;}
   holdActive=false; down=null; setHover(null);
 });
 canvas.addEventListener('pointerleave', e=>{
-  if(gameOn){ aiming=false; aim=null; if(e.pointerType==='mouse') mouse.active=false; return; }
+  if(game.on){ game.aiming=false; game.aim=null; if(e.pointerType==='mouse') mouse.active=false; return; }
   if(e.pointerType==='mouse'){ setHover(null); mouse.active=false; }
 });
 
 backBtn.addEventListener('click', ()=>writeHash(''));
 
 window.addEventListener('keydown', e=>{
-  if(gameOn && (e.key==='f' || e.key==='F')){ toggleFree(); return; }
+  if(game.on && (e.key==='f' || e.key==='F')){ toggleFree(); return; }
   if(e.key==='Escape'){
-    if(gameOn){ exitGame(); return; }
+    if(game.on){ exitGame(); return; }
     if(moonPanel.classList.contains('show')) writeHash(state.focused?state.focused.slug:'');
     else if(aboutPanel.classList.contains('show')) writeHash('');
     else if(state.mode==='planet') writeHash('');
@@ -1294,7 +1285,7 @@ let konamiIdx = 0;
 window.addEventListener('keydown', e=>{
   const k = e.key.toLowerCase();
   if(k === KONAMI[konamiIdx]){
-    if(++konamiIdx === KONAMI.length){ konamiIdx = 0; gameOn ? exitGame() : enterGame(); }
+    if(++konamiIdx === KONAMI.length){ konamiIdx = 0; game.on ? exitGame() : enterGame(); }
   } else {
     konamiIdx = (k === KONAMI[0]) ? 1 : 0;
   }
@@ -1305,7 +1296,7 @@ let typed = '';
 window.addEventListener('keydown', e=>{
   if(e.key.length !== 1) return;
   typed = (typed + e.key.toLowerCase()).slice(-5);
-  if(typed === 'comet'){ typed = ''; gameOn ? exitGame() : enterGame(); }
+  if(typed === 'comet'){ typed = ''; game.on ? exitGame() : enterGame(); }
 });
 
 /* boot ur boot */
