@@ -247,7 +247,10 @@ export function buildA11y(){
 }
 
 /* ---- url hash <-> state (so back/forward work) ---- */
-function currentHash(){ return decodeURIComponent(location.hash.replace(/^#/,'')); }
+function currentHash(){
+  try { return decodeURIComponent(location.hash.replace(/^#/,'')); }
+  catch(error){ if(error instanceof URIError) return null; throw error; }
+}
 export function writeHash(h){
   const want = h || '';
   if(currentHash() !== want){
@@ -258,15 +261,16 @@ export function writeHash(h){
 }
 export function applyHashState(){
   const h = currentHash();
-  const slash = h.indexOf('/');
-  const pslug = slash<0 ? h : h.slice(0,slash);
-  const mslug = slash<0 ? '' : h.slice(slash+1);
+  if(h===null) history.replaceState(null, '', location.pathname + location.search);
   if(!h){
     if(aboutOpen()) closeAbout();
     if(moonOpen()) closeMoon();
     if(state.focused) pullBack();
     return;
   }
+  const slash = h.indexOf('/');
+  const pslug = slash<0 ? h : h.slice(0,slash);
+  const mslug = slash<0 ? '' : h.slice(slash+1);
   if(pslug==='about'){
     if(state.focused) pullBack();
     closeMoon();
